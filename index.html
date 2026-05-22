@@ -11,6 +11,14 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- 预加载动态/关键隐藏资源，防止加载页关闭后还没准备好 -->
+    <link rel="preload" href="飞碟小猫.webm" as="video">
+    <link rel="preload" href="飞机.png" as="image">
+    <link rel="preload" href="火车.png" as="image">
+    <link rel="preload" href="火箭.png" as="image">
+    <link rel="preload" href="地图1.png" as="image">
+    <link rel="preload" href="区域一背景.jpg" as="image">
+    <link rel="preload" href="区域二背景.jfif" as="image">
     <script src="js/css-doodle.min.js" async></script>
     <script type="importmap">
     {"imports":{"ogl":"https://cdn.jsdelivr.net/npm/ogl@1.0.11/src/index.js"}}
@@ -7060,7 +7068,7 @@
     window._checkLoaderDone = checkAllDone;
 
     var loaderStartTime = Date.now();
-    var MIN_LOADER_TIME = 3000; // 至少显示3秒
+    var MIN_LOADER_TIME = 5000; // 至少显示5秒，确保关键资源加载完毕
 
     function finishLoader() {
         loaderDone = true;
@@ -7080,10 +7088,11 @@
     var imgs = document.querySelectorAll('img[src]');
     var scripts = document.querySelectorAll('script[src]');
     var links = document.querySelectorAll('link[rel="stylesheet"]');
+    var preloads = document.querySelectorAll('link[rel="preload"]');
     var audios = document.querySelectorAll('audio');
     var videos = document.querySelectorAll('video');
 
-    totalResources = imgs.length + scripts.length + links.length + audios.length + videos.length;
+    totalResources = imgs.length + scripts.length + links.length + preloads.length + audios.length + videos.length;
 
     // attach listeners
     imgs.forEach(function(el) {
@@ -7097,6 +7106,10 @@
     links.forEach(function(el) {
         if (el.sheet) { loadedResources++; }
         else { el.addEventListener('load', onResourceLoad); el.addEventListener('error', onResourceLoad); }
+    });
+    preloads.forEach(function(el) {
+        el.addEventListener('load', onResourceLoad);
+        el.addEventListener('error', onResourceLoad);
     });
     audios.forEach(function(el) {
         if (el.readyState >= 2) { loadedResources++; }
