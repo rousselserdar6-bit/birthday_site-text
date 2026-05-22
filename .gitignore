@@ -1,0 +1,14 @@
+# Claude AI
+.claude/
+
+# System files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Node
+node_modules/

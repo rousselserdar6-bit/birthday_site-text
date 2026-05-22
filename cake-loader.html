@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Happy Birthday</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #1a1a2e;
+      font-family: "Inter", sans-serif;
+      gap: 20px;
+    }
+
+    .container {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .cake-img {
+      width: 200px;
+      height: auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .happy-birthday {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2;
+      display: flex;
+      gap: 0.35em;
+      font-size: 1.65em;
+      font-style: italic;
+      letter-spacing: 0.2em;
+      white-space: nowrap;
+      width: 460px;
+      justify-content: center;
+    }
+
+    .happy-birthday span {
+      display: inline-block;
+      opacity: 0.4;
+      animation: letter-shine 2s infinite;
+      color: #fff;
+      filter: blur(1px);
+    }
+
+    .happy-birthday span:nth-child(1) { animation-delay: 0s; }
+    .happy-birthday span:nth-child(2) { animation-delay: 0.07s; }
+    .happy-birthday span:nth-child(3) { animation-delay: 0.14s; }
+    .happy-birthday span:nth-child(4) { animation-delay: 0.21s; }
+    .happy-birthday span:nth-child(5) { animation-delay: 0.28s; }
+    .happy-birthday span:nth-child(6) { animation-delay: 0.35s; }
+    .happy-birthday span:nth-child(7) { animation-delay: 0.42s; }
+    .happy-birthday span:nth-child(8) { animation-delay: 0.49s; }
+    .happy-birthday span:nth-child(9) { animation-delay: 0.56s; }
+    .happy-birthday span:nth-child(10) { animation-delay: 0.63s; }
+    .happy-birthday span:nth-child(11) { animation-delay: 0.70s; }
+    .happy-birthday span:nth-child(12) { animation-delay: 0.77s; }
+    .happy-birthday span:nth-child(13) { animation-delay: 0.84s; }
+    .happy-birthday span:nth-child(14) { animation-delay: 0.91s; }
+
+    @keyframes letter-shine {
+      0%, 100% {
+        opacity: 0.3;
+        filter: blur(2px);
+        text-shadow: none;
+      }
+      20% {
+        opacity: 1;
+        filter: blur(0px);
+        text-shadow:
+          0px 0px 2px #fff,
+          0px 0px 8px #fff,
+          0px 0px 12px #f8c8d8;
+      }
+      40% {
+        opacity: 0.6;
+        filter: blur(1.5px);
+        text-shadow: 0px 0px 3px #fff;
+      }
+    }
+
+    /* ---- LOADING text ---- */
+    .loading-text {
+      display: flex;
+      gap: 0.25em;
+      font-size: 1em;
+      font-weight: 600;
+      letter-spacing: 0.3em;
+      color: #fff;
+    }
+
+    .loading-text span {
+      display: inline-block;
+      opacity: 0.3;
+      animation: loading-blink 3s infinite;
+      filter: blur(1px);
+    }
+
+    .loading-text span:nth-child(1) { animation-delay: 0s; }
+    .loading-text span:nth-child(2) { animation-delay: 0.2s; }
+    .loading-text span:nth-child(3) { animation-delay: 0.4s; }
+    .loading-text span:nth-child(4) { animation-delay: 0.6s; }
+    .loading-text span:nth-child(5) { animation-delay: 0.8s; }
+    .loading-text span:nth-child(6) { animation-delay: 1.0s; }
+    .loading-text span:nth-child(7) { animation-delay: 1.2s; }
+
+    @keyframes loading-blink {
+      0%, 100% {
+        opacity: 0.25;
+        filter: blur(2px);
+        text-shadow: none;
+      }
+      30% {
+        opacity: 1;
+        filter: blur(0px);
+        text-shadow:
+          0px 0px 2px #fff,
+          0px 0px 6px #fff;
+      }
+      60% {
+        opacity: 0.5;
+        filter: blur(1px);
+        text-shadow: 0px 0px 2px #fff;
+      }
+    }
+
+    /* ---- Progress bar ---- */
+    .progress-wrapper {
+      width: 320px;
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #f8c8d8, #e8879b, #f5a0b5);
+      border-radius: 2px;
+      animation: progress-glow 1.5s ease-in-out infinite;
+      transition: width 0.3s ease-out;
+    }
+
+    @keyframes progress-glow {
+      0%, 100% { box-shadow: 0 0 4px rgba(248,200,216,0.3); }
+      50% { box-shadow: 0 0 12px rgba(248,200,216,0.6); }
+    }
+
+    .star {
+      position: absolute;
+      border-radius: 50%;
+      background-color: #fff;
+      animation: star-twinkle 2s infinite;
+      box-shadow: 0 0 6px 0 #fff;
+      z-index: 0;
+    }
+
+    @keyframes star-twinkle {
+      0%, 100% {
+        opacity: 0.15;
+        filter: blur(4px);
+      }
+      50% {
+        opacity: 0.45;
+        filter: blur(1px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="container">
+    <img class="cake-img" src="蛋糕.png" alt="Cake" id="cake">
+
+    <div class="happy-birthday">
+      <span>H</span><span>A</span><span>P</span><span>P</span><span>Y</span>
+      <span>-</span>
+      <span>B</span><span>I</span><span>R</span><span>T</span><span>H</span>
+      <span>D</span><span>A</span><span>Y</span>
+    </div>
+  </div>
+
+  <div class="loading-text">
+    <span>L</span><span>O</span><span>A</span><span>D</span><span>I</span><span>N</span><span>G</span>
+  </div>
+
+  <div class="progress-wrapper">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+
+  <script>
+    const container = document.getElementById('container');
+    const cake = document.getElementById('cake');
+    const starCount = 75;
+    const progressFill = document.getElementById('progressFill');
+
+    // Simulate progress for standalone demo
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+      progress += Math.random() * 8;
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(progressInterval);
+      }
+      progressFill.style.width = progress + '%';
+    }, 200);
+
+    cake.onload = function() {
+      const cw = container.offsetWidth;
+      const ch = container.offsetHeight;
+      const cx = cw / 2;
+      const cy = ch / 2;
+
+      const rx = cw / 2 + 40;
+      const ry = ch / 2 + 40;
+
+      const fragment = document.createDocumentFragment();
+
+      for (let i = 0; i < starCount; i++) {
+        const angle = (i / starCount) * Math.PI * 2;
+        const jitterR = (Math.random() - 0.5) * 50;
+        const r = Math.min(rx, ry) + jitterR;
+        const jitterA = (Math.random() - 0.5) * 0.12;
+        const a = angle + jitterA;
+
+        const x = cx + Math.cos(a) * r * (rx / Math.min(rx, ry));
+        const y = cy + Math.sin(a) * r * (ry / Math.min(rx, ry));
+
+        const star = document.createElement('div');
+        star.className = 'star';
+
+        const size = 2 + Math.random() * 5;
+        const blur = 1.5 + Math.random() * 3;
+        const delay = Math.random() * 2;
+        const scale = 0.5 + Math.random() * 1.5;
+
+        star.style.cssText = `
+          width: ${size}px;
+          height: ${size}px;
+          top: ${y}px;
+          left: ${x}px;
+          filter: blur(${blur}px);
+          animation-delay: ${delay}s;
+          scale: ${scale};
+          opacity: ${0.1 + Math.random() * 0.25};
+        `;
+
+        fragment.appendChild(star);
+      }
+
+      container.appendChild(fragment);
+    };
+  </script>
+</body>
+</html>

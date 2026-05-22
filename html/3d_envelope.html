@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 信封引擎 - 牛皮纸质感阅读版</title>
+    <style>
+        /* ==========================================================================
+           UI 与 交互层样式设定 (暗调暖棕背景，凸显牛皮纸)
+           ========================================================================== */
+        :root {
+            --bg-color-start: #5c4a42;
+            --bg-color-end: #2d2420;
+            --btn-color: #c93b3b;
+            --btn-hover: #a12b2b;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 40%, var(--bg-color-start) 0%, var(--bg-color-end) 100%);
+            font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        #webgl-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        #hud-interface {
+            position: absolute;
+            bottom: 6%; left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex; flex-direction: column; align-items: center; gap: 18px;
+            pointer-events: none;
+        }
+        
+        .action-btn {
+            padding: 16px 42px;
+            font-size: 16px; font-weight: 700; color: #fff;
+            background: linear-gradient(135deg, var(--btn-color) 0%, #8a2525 100%);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 50px;
+            cursor: pointer; pointer-events: auto;
+            box-shadow: 0 10px 20px rgba(138, 37, 37, 0.4), inset 0 2px 4px rgba(255,255,255,0.3);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            letter-spacing: 4px; text-transform: uppercase;
+            backdrop-filter: blur(4px);
+        }
+        .action-btn:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 15px 30px rgba(138, 37, 37, 0.6), inset 0 2px 4px rgba(255,255,255,0.4);
+        }
+        .action-btn:active { transform: translateY(0) scale(0.98); }
+        .action-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        .status-text {
+            color: #b09e93; font-size: 13px; font-weight: 600;
+            letter-spacing: 6px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            text-transform: uppercase;
+            animation: pulseText 3s infinite ease-in-out;
+        }
+
+        @keyframes pulseText {
+            0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; }
+        }
+
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #4a3b34; z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 20px;
+            color: #e3d2c8; font-size: 18px; font-weight: bold; letter-spacing: 3px;
+            transition: opacity 0.8s ease;
+        }
+        .loader-bar {
+            width: 200px; height: 2px; background: rgba(255, 255, 255, 0.1);
+            position: relative; overflow: hidden;
+        }
+        .loader-bar::after {
+            content: ''; position: absolute; top: 0; left: 0; height: 100%; width: 40%;
+            background: var(--btn-color);
+            animation: loadingAnim 1s infinite ease-in-out alternate;
+        }
+        @keyframes loadingAnim { 0% { left: 0; } 100% { left: 60%; } }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+    <div id="loading-overlay">
+        <div>渲染牛皮纸纤维与信件...</div>
+        <div class="loader-bar"></div>
+    </div>
+    <div id="webgl-container"></div>
+    <div id="hud-interface">
+        <div class="status-text" id="statusDesc">➔ 电影级运镜 · 景深放大</div>
+        <button class="action-btn" id="interactBtn">拆解信封 💌</button>
+    </div>
+
+    <script>
+        /**
+         * ==========================================================================
+         * 模块 1：高级程序化材质 (Kraft Paper & Foldable Letter)
+         * ==========================================================================
+         */
+        function createPaperBumpMap() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 1024;
+            const context = canvas.getContext('2d');
+            const imgData = context.createImageData(1024, 1024);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                const noise = Math.floor(Math.random() * 40) + 215; 
+                imgData.data[i] = noise; imgData.data[i+1] = noise; imgData.data[i+2] = noise; imgData.data[i+3] = 255;
+            }
+            context.putImageData(imgData, 0, 0);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(4, 4);
+            return texture;
+        }
+
+        // 修改：信纸现在是 1:2 的长图，以适配三段式翻折，并写入真实生日信件内容
+        function createPaperColorMap(isLetter = false) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; 
+            canvas.height = isLetter ? 2048 : 1024; // 信纸画板拉长
+            const ctx = canvas.getContext('2d');
+            
+            if (isLetter) {
+                // 信纸：做旧米白
+                ctx.fillStyle = '#f4f0e6';
+                ctx.fillRect(0, 0, 1024, 2048);
+                
+                // --- 1. 绘制精致的双层复古边框 ---
+                ctx.strokeStyle = 'rgba(190, 165, 135, 0.6)';
+                ctx.lineWidth = 8;
+                ctx.strokeRect(50, 50, 924, 1948);
+                ctx.lineWidth = 2;
+                ctx.strokeRect(65, 65, 894, 1918);
+
+                // --- 2. 绘制复古背景暗纹 (水纹花饰) ---
+                ctx.save();
+                ctx.translate(512, 1024);
+                ctx.strokeStyle = 'rgba(180, 150, 120, 0.12)'; // 极低透明度，作为高级纸张底纹
+                ctx.lineWidth = 15;
+                ctx.lineCap = 'round';
+                for(let i = 0; i < 6; i++) {
+                    ctx.rotate(Math.PI / 3);
+                    ctx.beginPath();
+                    ctx.moveTo(0, 80);
+                    ctx.bezierCurveTo(200, 300, 400, -100, 0, 600);
+                    ctx.stroke();
+                }
+                ctx.restore();
+
+                // --- 3. 绘制四角复古蔓藤花纹 (Corner Flourishes) ---
+                function drawVintageCorner(cx, cy, rotation) {
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    ctx.rotate(rotation);
+                    ctx.strokeStyle = 'rgba(180, 150, 120, 0.7)';
+                    ctx.lineWidth = 5;
+                    ctx.lineCap = 'round';
+
+                    // 主螺旋线
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.bezierCurveTo(80, 0, 120, 40, 120, 120);
+                    ctx.stroke();
+
+                    // 内侧细螺旋
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(0, 25);
+                    ctx.bezierCurveTo(60, 25, 95, 55, 95, 105);
+                    ctx.stroke();
+
+                    // 叶片点缀
+                    ctx.beginPath();
+                    ctx.moveTo(35, 0);
+                    ctx.bezierCurveTo(45, -25, 85, -25, 105, -10);
+                    ctx.bezierCurveTo(85, 15, 65, 15, 35, 0);
+                    ctx.fillStyle = 'rgba(180, 150, 120, 0.3)';
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                
+                // 依次在四个角落画上花边
+                drawVintageCorner(65, 65, 0);                     // 左上
+                drawVintageCorner(959, 65, Math.PI / 2);          // 右上
+                drawVintageCorner(959, 1983, Math.PI);            // 右下
+                drawVintageCorner(65, 1983, -Math.PI / 2);        // 左下
+                
+                // ================== 写入真实信件内容 ==================
+                ctx.fillStyle = 'rgba(50, 40, 35, 0.9)'; // 墨水色
+                ctx.font = 'bold 46px "STXingkai", "STKaiti", "KaiTi", "楷体", serif'; // 艺术手写体
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+
+                const textContent = "亲爱的小皇帝：\n\n　　见字如面，当你看到这封信的时候，你肯定已经在庐山了，庐山的生活如何呢，希望你在庐山一切顺利，诶嘿你已经二十一岁了，很神奇，我刚认识你的时候也是二十一岁，二十一岁很奇妙，这是大学生活的最后一年，有些改变要来迎接，有些过去要说再见，午夜梦回，这一年总是人们想念大学时光的一年，从前以为大家命运相仿的同学们从此走上了截然不同的道路，在这一年里，你想成为一个什么样的人呢？\n\n　　祝你生日快乐！\n\n　　愿我们爱意长久，朝夕皆欢喜。";
+
+                function wrapText(context, text, x, y, maxWidth, lineHeight) {
+                    let paragraphs = text.split('\n');
+                    let currentY = y;
+                    for (let i = 0; i < paragraphs.length; i++) {
+                        let line = '';
+                        let chars = paragraphs[i].split('');
+                        for (let n = 0; n < chars.length; n++) {
+                            let testLine = line + chars[n];
+                            let testWidth = context.measureText(testLine).width;
+                            if (testWidth > maxWidth && n > 0) {
+                                context.fillText(line, x, currentY);
+                                line = chars[n];
+                                currentY += lineHeight;
+                            } else {
+                                line = testLine;
+                            }
+                        }
+                        context.fillText(line, x, currentY);
+                        currentY += lineHeight;
+                    }
+                    return currentY;
+                }
+
+                // 自动排版信件正文 (因有花边，稍微调整两边的间距)
+                wrapText(ctx, textContent, 125, 260, 774, 85);
+
+                // --- 落款 (位置居右以平衡排版) ---
+                ctx.fillStyle = 'rgba(50, 40, 35, 0.9)'; 
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'top';
+                ctx.font = 'bold 52px "STXingkai", "STKaiti", "KaiTi", "楷体", serif';
+                ctx.fillText("韩卓锋", 880, 1680); 
+                
+                ctx.font = 'bold 42px "STXingkai", "STKaiti", "KaiTi", "楷体", serif';
+                ctx.fillText("5月22日", 880, 1760); 
+                
+            } else {
+                // 牛皮纸信封：暖色渐变，中间模拟接缝
+                const grad = ctx.createRadialGradient(512, 512, 100, 512, 512, 900);
+                grad.addColorStop(0, '#cca87c');
+                grad.addColorStop(1, '#b58a59');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, 1024, 1024);
+
+                // 模拟背面的中缝
+                ctx.fillStyle = 'rgba(0,0,0,0.08)';
+                ctx.fillRect(510, 0, 4, 1024);
+                ctx.fillStyle = 'rgba(255,255,255,0.06)';
+                ctx.fillRect(514, 0, 2, 1024);
+            }
+
+            // 细微杂色增加纸张厚重感
+            for (let i = 0; i < (isLetter ? 120000 : 60000); i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const alpha = Math.random() * 0.05;
+                ctx.fillStyle = Math.random() > 0.5 ? `rgba(0,0,0,${alpha})` : `rgba(255,255,255,${alpha})`;
+                ctx.fillRect(x, y, 2, 2);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; 
+            return texture;
+        }
+
+        const paperBumpTexture = createPaperBumpMap();
+        const envColorMap = createPaperColorMap(false);
+        const letterColorMap = createPaperColorMap(true);
+
+        /**
+         * ==========================================================================
+         * 模块 2：渲染引擎与物理光照初始化
+         * ==========================================================================
+         */
+        const container = document.getElementById('webgl-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x4a3b34, 0.012);
+
+        const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, -2, 22);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        // 电影级色调
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1; 
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.dampingFactor = 0.05;
+        controls.minDistance = 10; controls.maxDistance = 40;
+        controls.maxPolarAngle = Math.PI / 1.5; 
+        controls.enablePan = false;
+
+        const hemiLight = new THREE.HemisphereLight(0xfffdfa, 0x4a3b34, 0.7);
+        scene.add(hemiLight);
+
+        const sunLight = new THREE.DirectionalLight(0xffeedd, 1.4);
+        sunLight.position.set(12, 18, 15);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.set(2048, 2048);
+        sunLight.shadow.camera.near = 0.5; sunLight.shadow.camera.far = 50;
+        sunLight.shadow.camera.left = -15; sunLight.shadow.camera.right = 15;
+        sunLight.shadow.camera.top = 15; sunLight.shadow.camera.bottom = -15;
+        sunLight.shadow.bias = -0.0005;
+        scene.add(sunLight);
+
+        const fillLight = new THREE.DirectionalLight(0xaabbcc, 0.4);
+        fillLight.position.set(-15, -5, -10);
+        scene.add(fillLight);
+
+        /**
+         * ==========================================================================
+         * 模块 3：材质工厂 
+         * ==========================================================================
+         */
+        const envMatConfig = {
+            map: envColorMap, roughness: 0.85, metalness: 0.05, 
+            bumpMap: paperBumpTexture, bumpScale: 0.01, 
+            side: THREE.DoubleSide, transparent: true, opacity: 1.0
+        };
+        const materialEnv = new THREE.MeshStandardMaterial(envMatConfig);
+        const materialEnvInner = new THREE.MeshStandardMaterial({
+            ...envMatConfig, color: 0xaa8866, bumpScale: 0.005
+        });
+        
+        // 红色高光纽扣
+        const materialButton = new THREE.MeshPhysicalMaterial({
+            color: 0xc42020, roughness: 0.2, metalness: 0.1, 
+            clearcoat: 1.0, clearcoatRoughness: 0.1,
+            transparent: true, opacity: 1.0
+        });
+        const materialRivet = new THREE.MeshStandardMaterial({
+            color: 0xc0c0c0, roughness: 0.3, metalness: 0.9,
+            transparent: true, opacity: 1.0
+        });
+        const materialString = new THREE.MeshStandardMaterial({
+            color: 0x1f2b38, roughness: 0.9, transparent: true, opacity: 1.0
+        });
+
+        const envelopeMaterials = [materialEnv, materialEnvInner, materialButton, materialRivet, materialString];
+
+        // --- 信纸的材质分割 (上、中、下三段) ---
+        function createLetterPanelMaterial(offsetY) {
+            const tex = letterColorMap.clone();
+            tex.needsUpdate = true;
+            tex.repeat.set(1, 1/3);
+            tex.offset.set(0, offsetY);
+            return new THREE.MeshStandardMaterial({
+                map: tex, roughness: 0.7, metalness: 0.0,
+                bumpMap: paperBumpTexture, bumpScale: 0.004
+            });
+        }
+        
+        const matLetterTop = createLetterPanelMaterial(2/3);
+        const matLetterMid = createLetterPanelMaterial(1/3);
+        const matLetterBot = createLetterPanelMaterial(0);
+        // 背面无字迹，只有质感
+        const matLetterBlank = new THREE.MeshStandardMaterial({
+            color: 0xf4f0e6, roughness: 0.7, metalness: 0.0,
+            bumpMap: paperBumpTexture, bumpScale: 0.004
+        });
+
+        /**
+         * ==========================================================================
+         * 模块 4：三维体积构建 (Envelope & Foldable Letter)
+         * ==========================================================================
+         */
+        const envGroup = new THREE.Group();
+        scene.add(envGroup);
+
+        const W = 9.0, H = 6.0, THICKNESS = 0.3, P_THICK = 0.03;
+        const zBack = -THICKNESS / 2, zFront = THICKNESS / 2, zCenter = 0;
+        const extrudeConfig = { depth: P_THICK, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.01, bevelSegments: 4 };
+
+        // --- 信封构建 (保持不变) ---
+        const backMesh = new THREE.Mesh(new THREE.BoxGeometry(W, H, P_THICK), materialEnv);
+        backMesh.position.z = zBack - P_THICK/2; backMesh.castShadow = true; backMesh.receiveShadow = true;
+        envGroup.add(backMesh);
+        
+        envGroup.add(new THREE.Mesh(new THREE.BoxGeometry(P_THICK, H, THICKNESS), materialEnvInner).translateX(-W/2 + P_THICK/2));
+        envGroup.add(new THREE.Mesh(new THREE.BoxGeometry(P_THICK, H, THICKNESS), materialEnvInner).translateX(W/2 - P_THICK/2));
+        envGroup.add(new THREE.Mesh(new THREE.BoxGeometry(W, P_THICK, THICKNESS), materialEnvInner).translateY(-H/2 + P_THICK/2));
+
+        const flapLeft = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape().moveTo(0,0).lineTo(W*0.42, H*0.5).lineTo(0, H), extrudeConfig), materialEnv);
+        flapLeft.position.set(-W/2, -H/2, zFront); flapLeft.receiveShadow = true; flapLeft.castShadow = true; envGroup.add(flapLeft);
+        const flapRight = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape().moveTo(W,0).lineTo(W*0.58, H*0.5).lineTo(W, H), extrudeConfig), materialEnv);
+        flapRight.position.set(-W/2, -H/2, zFront + 0.005); flapRight.receiveShadow = true; flapRight.castShadow = true; envGroup.add(flapRight);
+        const flapBottom = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape().moveTo(0,0).lineTo(W*0.1, H*0.58).lineTo(W*0.9, H*0.58).lineTo(W, 0), extrudeConfig), materialEnv);
+        flapBottom.position.set(-W/2, -H/2, zFront + 0.01); flapBottom.receiveShadow = true; flapBottom.castShadow = true; envGroup.add(flapBottom);
+
+        const flapHinge = new THREE.Group();
+        flapHinge.position.set(0, H/2, zBack); 
+        envGroup.add(flapHinge);
+
+        const flapTopGroup = new THREE.Group();
+        flapHinge.add(flapTopGroup);
+
+        const bridgeDepth = THICKNESS + 0.045; 
+        const bridge = new THREE.Mesh(new THREE.BoxGeometry(W, P_THICK, bridgeDepth), materialEnv);
+        bridge.position.set(0, 0, bridgeDepth / 2);
+        bridge.castShadow = true; bridge.receiveShadow = true;
+        flapTopGroup.add(bridge);
+
+        const flapLen = H * 0.85; 
+        const flapW = W * 0.96; 
+        const topShape = new THREE.Shape();
+        topShape.moveTo(-flapW/2, 0); topShape.lineTo(flapW/2, 0);
+        topShape.lineTo(1.5, -flapLen + 0.5); 
+        topShape.quadraticCurveTo(0, -flapLen, -1.5, -flapLen + 0.5);
+        topShape.lineTo(-flapW/2, 0);
+        
+        const flapTop = new THREE.Mesh(
+            new THREE.ExtrudeGeometry(topShape, { depth: P_THICK, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.01, bevelSegments: 4 }),
+            materialEnv
+        );
+        flapTop.position.set(0, -P_THICK/2, bridgeDepth);
+        flapTop.castShadow = true; flapTop.receiveShadow = true; 
+        flapTopGroup.add(flapTop);
+
+        function createRedButton() {
+            const grp = new THREE.Group();
+            grp.add(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.08, 32), materialButton).rotateX(Math.PI/2));
+            grp.add(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.1, 16), materialRivet).rotateX(Math.PI/2).translateY(0.04));
+            return grp;
+        }
+
+        const topBtn = createRedButton();
+        topBtn.position.set(0, -flapLen + 0.9, P_THICK + 0.02);
+        const curve = new THREE.CubicBezierCurve3(
+            new THREE.Vector3(0, -0.1, 0.05),
+            new THREE.Vector3(0.5, -0.8, 0.2),
+            new THREE.Vector3(-0.3, -1.5, -0.1),
+            new THREE.Vector3(0.6, -2.5, 0.1)
+        );
+        const stringMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.015, 8, false), materialString);
+        topBtn.add(stringMesh);
+        flapTop.add(topBtn);
+
+        const bottomBtn = createRedButton();
+        bottomBtn.position.set(0, -H/2 + 2.0, zFront + 0.04);
+        envGroup.add(bottomBtn);
+
+        flapHinge.rotation.x = 0.0;
+
+        // --- 核心：三段式折叠信纸构建 ---
+        const L_HEIGHT = H * 0.88;
+        const L_THICK = THICKNESS * 0.12; 
+        const ENV_OPENING_Y = H / 2;
+
+        const letterGroup = new THREE.Group();
+        scene.add(letterGroup); 
+
+        const panelGeo = new THREE.BoxGeometry(W * 0.88, L_HEIGHT, L_THICK);
+        
+        // 材质顺序：[Right, Left, Top, Bottom, Front, Back]
+        const matSetTop = [matLetterBlank, matLetterBlank, matLetterBlank, matLetterBlank, matLetterTop, matLetterBlank];
+        const matSetMid = [matLetterBlank, matLetterBlank, matLetterBlank, matLetterBlank, matLetterMid, matLetterBlank];
+        const matSetBot = [matLetterBlank, matLetterBlank, matLetterBlank, matLetterBlank, matLetterBot, matLetterBlank];
+
+        // 1. 中间的主面板 (作为坐标系基准)
+        const midPanel = new THREE.Mesh(panelGeo, matSetMid);
+        midPanel.castShadow = true; midPanel.receiveShadow = true;
+        letterGroup.add(midPanel);
+
+        // 2. 上方面板及其铰链
+        // 铰链在 Z 轴上微调，防止折叠时穿模发生 z-fighting
+        const letterTopHinge = new THREE.Group();
+        letterTopHinge.position.set(0, L_HEIGHT / 2, L_THICK * 1.05); 
+        midPanel.add(letterTopHinge);
+
+        const topPanel = new THREE.Mesh(panelGeo, matSetTop);
+        topPanel.position.set(0, L_HEIGHT / 2, 0); 
+        topPanel.castShadow = true; topPanel.receiveShadow = true;
+        letterTopHinge.add(topPanel);
+
+        // 3. 下方面板及其铰链 (叠在最上面，Z偏移量要大于上方面板)
+        const letterBotHinge = new THREE.Group();
+        letterBotHinge.position.set(0, -L_HEIGHT / 2, L_THICK * 2.1);
+        midPanel.add(letterBotHinge);
+
+        const bottomPanel = new THREE.Mesh(panelGeo, matSetBot);
+        bottomPanel.position.set(0, -L_HEIGHT / 2, 0);
+        bottomPanel.castShadow = true; bottomPanel.receiveShadow = true;
+        letterBotHinge.add(bottomPanel);
+
+        // 初始物理参数：信件呈三折叠状态
+        letterTopHinge.rotation.x = Math.PI;   // 向前内扣
+        letterBotHinge.rotation.x = -Math.PI;  // 向上内扣
+
+        envGroup.rotation.set(-0.15, 0.35, 0.03); 
+
+        document.getElementById('loading-overlay').style.opacity = 0;
+        setTimeout(() => document.getElementById('loading-overlay').remove(), 800);
+
+        /**
+         * ==========================================================================
+         * 模块 5：目标追踪状态机 (Reading & Unfolding 运镜逻辑)
+         * ==========================================================================
+         */
+        const physicsTarget = {
+            envRotX: -0.15, envRotY: 0.35, envRotZ: 0.03,
+            envZ: 0.0, envOpacity: 1.0,
+            flapRotX: 0.0, 
+            letterY: -0.05, letterZ: zCenter, letterRotX: 0.0, letterScale: 1.0,
+            foldTopX: Math.PI, foldBotX: -Math.PI // 翻折追踪目标
+        };
+
+        const STATE = { CLOSED: 0, EXTRACTING: 1, EXTRACTED: 2, READING: 3, INSERTING: 4 };
+        let currentState = STATE.CLOSED;
+        const btn = document.getElementById('interactBtn');
+        const statusText = document.getElementById('statusDesc');
+
+        let extractPhase = 0;
+        let insertPhase = 0;
+        let phaseStartTime = 0;
+        let pullOutTriggered = false;
+
+        btn.addEventListener('click', () => {
+            btn.disabled = true;
+
+            if (currentState === STATE.CLOSED) {
+                currentState = STATE.EXTRACTING;
+                extractPhase = 0;
+                phaseStartTime = performance.now();
+                pullOutTriggered = false;
+                btn.innerText = "正在拆解...";
+                statusText.innerText = "➔ 物理模拟进行中";
+                tweenTarget(physicsTarget, { envRotX: 0, envRotY: 0, envRotZ: 0 }, 1000);
+            } else if (currentState === STATE.READING) {
+                currentState = STATE.INSERTING;
+                insertPhase = -1; 
+                phaseStartTime = performance.now();
+                btn.innerText = "正在折叠...";
+                statusText.innerText = "➔ 折回重建中";
+                
+                // 第一步：先将信纸翻折回去
+                tweenTarget(physicsTarget, { foldBotX: -Math.PI }, 600);
+                setTimeout(() => {
+                    tweenTarget(physicsTarget, { foldTopX: Math.PI }, 600);
+                }, 400);
+
+                // 第二步：信封恢复，信纸变回正常大小并悬停在入口
+                setTimeout(() => {
+                    tweenTarget(physicsTarget, { 
+                        letterZ: zFront + 1.5, 
+                        letterY: ENV_OPENING_Y + L_HEIGHT / 2 + 0.8,
+                        letterRotX: 0.18,
+                        letterScale: 1.0,
+                        envZ: 0.0,
+                        envOpacity: 1.0
+                    }, 1200);
+                    btn.innerText = "正在封存...";
+                }, 1000); 
+            }
+        });
+
+        function updateAnimationState(now) {
+            const elapsed = now - phaseStartTime;
+
+            if (currentState === STATE.EXTRACTING) {
+                if (extractPhase === 0 && elapsed > 600) {
+                    tweenTarget(physicsTarget, { flapRotX: -Math.PI * 0.95 }, 1200);
+                    extractPhase = 1; phaseStartTime = now;
+                } else if (extractPhase === 1 && elapsed > 1400) {
+                    tweenTarget(physicsTarget, { letterY: ENV_OPENING_Y + L_HEIGHT / 2 + 0.8 }, 1600); 
+                    extractPhase = 2; phaseStartTime = now;
+                }
+            } else if (currentState === STATE.INSERTING) {
+                // 等待折叠与拉回完成 (1000ms延时 + 1200ms动画)
+                if (insertPhase === -1 && elapsed > 2400) {
+                    insertPhase = 0; phaseStartTime = now;
+                } else if (insertPhase === 0 && elapsed > 200) {
+                    tweenTarget(physicsTarget, { letterY: ENV_OPENING_Y + L_HEIGHT / 2 + 0.8, letterZ: zCenter, letterRotX: 0.0 }, 1000);
+                    insertPhase = 1; phaseStartTime = now;
+                } else if (insertPhase === 1 && elapsed > 1200) {
+                    tweenTarget(physicsTarget, { letterY: -0.05 }, 1200);
+                    insertPhase = 2; phaseStartTime = now;
+                } else if (insertPhase === 2 && elapsed > 1200) {
+                    tweenTarget(physicsTarget, { flapRotX: 0.0 }, 1200);
+                    insertPhase = 3; phaseStartTime = now;
+                } else if (insertPhase === 3 && elapsed > 800) {
+                    tweenTarget(physicsTarget, { envRotX: -0.15, envRotY: 0.35, envRotZ: 0.03 }, 1200);
+                    insertPhase = 4; phaseStartTime = now;
+                } else if (insertPhase === 4 && elapsed > 1200) {
+                    currentState = STATE.CLOSED;
+                    btn.innerText = "拆解信封 💌";
+                    statusText.innerText = "➔ 电影级运镜 · 折叠放大";
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        function tweenTarget(target, props, duration) {
+            const startTimes = {}, startVals = {};
+            for (let key in props) { startVals[key] = target[key]; startTimes[key] = performance.now(); }
+            function update(time) {
+                let allDone = true;
+                for (let key in props) {
+                    let progress = Math.min((time - startTimes[key]) / duration, 1);
+                    let easeProgress = 1 - Math.pow(1 - progress, 3);
+                    target[key] = startVals[key] + (props[key] - startVals[key]) * easeProgress;
+                    if (progress < 1) allDone = false;
+                }
+                if (!allDone) requestAnimationFrame(update);
+            }
+            requestAnimationFrame(update);
+        }
+
+        /**
+         * ==========================================================================
+         * 模块 6：信封约束与 运镜系统 (Zoom-in, Fade-out, & Unfold)
+         * ==========================================================================
+         */
+        const springTension = 0.12;
+        const FRONT_WALL_Z = zFront;
+        const SAFE_Z_MAX_INSIDE = FRONT_WALL_Z - L_THICK / 2 - 0.03;
+        const PULL_OUT_Z = 3.5; 
+        
+        const virtualEnvMatrix = new THREE.Matrix4();
+
+        function applyPhysicsCollision() {
+            envGroup.rotation.x += (physicsTarget.envRotX - envGroup.rotation.x) * springTension;
+            envGroup.rotation.y += (physicsTarget.envRotY - envGroup.rotation.y) * springTension;
+            envGroup.rotation.z += (physicsTarget.envRotZ - envGroup.rotation.z) * springTension;
+
+            let nextY    = physicsTarget.letterY; 
+            let nextZ    = physicsTarget.letterZ; 
+            let nextRotX = physicsTarget.letterRotX; 
+            let nextFlapRot = flapHinge.rotation.x + (physicsTarget.flapRotX - flapHinge.rotation.x) * springTension;
+            
+            let nextEnvZ = envGroup.position.z + (physicsTarget.envZ - envGroup.position.z) * springTension;
+            let nextOpacity = materialEnv.opacity + (physicsTarget.envOpacity - materialEnv.opacity) * springTension;
+            let nextScale = letterGroup.scale.x + (physicsTarget.letterScale - letterGroup.scale.x) * springTension;
+
+            // 信纸铰链更新
+            letterTopHinge.rotation.x += (physicsTarget.foldTopX - letterTopHinge.rotation.x) * (springTension * 0.8);
+            letterBotHinge.rotation.x += (physicsTarget.foldBotX - letterBotHinge.rotation.x) * (springTension * 0.8);
+
+            envelopeMaterials.forEach(mat => {
+                mat.opacity = nextOpacity;
+                mat.depthWrite = nextOpacity > 0.05;
+            });
+
+            const isFreeMovement = currentState === STATE.READING || 
+                                   (currentState === STATE.INSERTING && insertPhase === -1) || 
+                                   (currentState === STATE.EXTRACTING && pullOutTriggered);
+
+            const paperBottomY = nextY - L_HEIGHT / 2;
+            const paperTopY = nextY + L_HEIGHT / 2;
+            const paperFullyOut = paperBottomY >= ENV_OPENING_Y;
+
+            // --- 防穿模约束 (利用信封在折叠状态的边界约束) ---
+            if (!paperFullyOut && !isFreeMovement) {
+                const FLOOR_Y = -H / 2 + P_THICK + L_HEIGHT / 2;
+                if (nextY < FLOOR_Y) { nextY = FLOOR_Y; physicsTarget.letterY = FLOOR_Y; }
+
+                const exitRatio = Math.max(0, Math.min(1, (paperTopY - ENV_OPENING_Y) / L_HEIGHT));
+                const maxAllowedZ = SAFE_Z_MAX_INSIDE + exitRatio * (PULL_OUT_Z - SAFE_Z_MAX_INSIDE);
+                if (nextZ > maxAllowedZ) { nextZ = maxAllowedZ; physicsTarget.letterZ = maxAllowedZ; }
+
+                const maxRotX = Math.abs(physicsTarget.letterRotX) * exitRatio;
+                if (Math.abs(nextRotX) > maxRotX + 0.01) { physicsTarget.letterRotX = maxRotX * Math.sign(nextRotX); nextRotX = physicsTarget.letterRotX; }
+                
+                if (nextZ > zCenter + 0.05) {
+                    const minAllowedY = ENV_OPENING_Y + L_HEIGHT / 2;
+                    if (nextY < minAllowedY) { nextY = minAllowedY; physicsTarget.letterY = minAllowedY; }
+                }
+            }
+
+            if (paperTopY > ENV_OPENING_Y - 0.5 && !isFreeMovement) {
+                const minFlapAngle = -Math.PI * 0.3;
+                if (nextFlapRot > minFlapAngle) { nextFlapRot = minFlapAngle; physicsTarget.flapRotX = minFlapAngle; }
+            }
+            if (nextFlapRot > 0) nextFlapRot = 0;
+            if (nextFlapRot < -Math.PI * 0.98) nextFlapRot = -Math.PI * 0.98;
+
+            // --- 自动进入电影级阅读运镜，加入连贯的两次翻折 ---
+            if (currentState === STATE.EXTRACTING && extractPhase === 2 && !pullOutTriggered) {
+                if (paperBottomY >= ENV_OPENING_Y && nextFlapRot < -Math.PI * 0.5) {
+                    pullOutTriggered = true;
+                    tweenTarget(physicsTarget, { letterZ: zFront + 1.5, letterRotX: 0.18 }, 800);
+                    
+                    setTimeout(() => {
+                        // 信纸飞近并缩小以适配完全展开后的巨大尺寸（变成三倍高）
+                        tweenTarget(physicsTarget, { 
+                            letterZ: 14.0,     
+                            letterY: 0.0,      // 将中心对准摄像机Y轴
+                            letterRotX: 0.0,   
+                            letterScale: 0.60, // 放大至 0.60
+                            envZ: -12.0,       
+                            envOpacity: 0.0    
+                        }, 1200);
+
+                        // 阶段展开1：打开上半段
+                        setTimeout(() => {
+                            tweenTarget(physicsTarget, { foldTopX: 0 }, 900);
+                        }, 700);
+                        
+                        // 阶段展开2：打开下半段
+                        setTimeout(() => {
+                            tweenTarget(physicsTarget, { foldBotX: 0 }, 900);
+                        }, 1300);
+
+                        // 等待所有展开动作完成
+                        setTimeout(() => {
+                            currentState = STATE.READING;
+                            btn.innerText = "封存信件 📥";
+                            statusText.innerText = "➔ 您可以尽情阅读";
+                            btn.disabled = false;
+                        }, 2400);
+                    }, 1000);
+                }
+            }
+
+            flapHinge.rotation.x  = nextFlapRot;
+            
+            envGroup.updateMatrixWorld();
+            virtualEnvMatrix.copy(envGroup.matrixWorld);
+            
+            const localOffset = new THREE.Vector3(0, nextY, nextZ);
+            localOffset.applyMatrix4(virtualEnvMatrix); 
+            
+            letterGroup.position.lerp(localOffset, springTension);
+            
+            const targetQuat = envGroup.quaternion.clone();
+            const rotXQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), nextRotX);
+            targetQuat.multiply(rotXQuat);
+            letterGroup.quaternion.slerp(targetQuat, springTension);
+
+            letterGroup.scale.setScalar(nextScale);
+            
+            return nextEnvZ;
+        }
+
+        const clock = new THREE.Clock();
+
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            controls.update();
+            updateAnimationState(performance.now());
+            
+            let targetEnvZ = applyPhysicsCollision();
+
+            let baseEnvY = 0;
+            let wobbleZ = 0;
+            if (currentState === STATE.CLOSED) {
+                const time = clock.getElapsedTime();
+                baseEnvY = Math.sin(time * 1.5) * 0.15;
+                wobbleZ = Math.cos(time * 1.0) * 0.08;
+            }
+            envGroup.position.y += (baseEnvY - envGroup.position.y) * 0.1;
+            envGroup.position.z = targetEnvZ + wobbleZ;
+
+            renderer.render(scene, camera);
+        }
+        
+        renderLoop();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
