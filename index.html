@@ -5858,20 +5858,57 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // ==================== 卡片背景图预加载 ====================
-            // 因为旅行日记卡片初始 opacity:0，部分浏览器会跳过不可见元素的背景图加载，
-            // 导致 reveal 时图片还未就绪出现空白。这里提前触发所有卡片背景图的下载。
-            (function preloadCardBackgrounds() {
-                const cardImgs = document.querySelectorAll('.card-img');
-                const urls = new Set();
-                cardImgs.forEach(el => {
-                    const bg = el.style.backgroundImage;
+            // ==================== 关键图片预加载 ====================
+            // 三个问题场景的图片都需要提前下载：
+            // 1. 卡片背景图 — 父元素初始 opacity:0，浏览器可能跳过加载
+            // 2. 载具移动图标 — 动态创建 img，若未缓存则动画期间不可见
+            // 3. Modal 弹窗背景 — 弹窗 display:none，内部元素的 CSS 背景图不会被加载
+            (function preloadCriticalImages() {
+                var urls = new Set();
+
+                // 1. 卡片 inline 背景图（旅行日记卡片）
+                var cardImgs = document.querySelectorAll('.card-img');
+                cardImgs.forEach(function(el) {
+                    var bg = el.style.backgroundImage;
                     if (!bg || bg === 'none') return;
-                    const match = bg.match(/url\(["']?([^"')]+)["']?\)/);
+                    var match = bg.match(/url\(["']?([^"')]+)["']?\)/);
                     if (match && match[1]) urls.add(match[1]);
                 });
-                urls.forEach(url => {
-                    const img = new Image();
+
+                // 2. 载具移动图标（map 区域动画使用）
+                var transportFiles = [
+                    '飞机-removebg-preview.png', '火车-removebg-preview.png',
+                    '公交车-removebg-preview.png', '老爷车-removebg-preview.png',
+                    '卡车-removebg-preview.png', '帆船-removebg-preview.png',
+                    '火箭-removebg-preview.png'
+                ];
+                transportFiles.forEach(function(f) { urls.add(f); });
+
+                // 3. Modal 弹窗 CSS 背景图 — 扫描所有内联样式表和外部样式表
+                try {
+                    for (var si = 0; si < document.styleSheets.length; si++) {
+                        var sheet = document.styleSheets[si];
+                        var rules;
+                        try { rules = sheet.cssRules || sheet.rules; } catch(e) { continue; }
+                        if (!rules) continue;
+                        for (var ri = 0; ri < rules.length; ri++) {
+                            var text = rules[ri].cssText || '';
+                            var re = /url\(["']?([^"')]+)["']?\)/g;
+                            var m;
+                            while ((m = re.exec(text)) !== null) {
+                                var u = m[1];
+                                // 只预加载本地图片，跳过 data: 和 http(s):// 远程资源
+                                if (u.indexOf('data:') === 0) continue;
+                                if (u.indexOf('http://') === 0 || u.indexOf('https://') === 0) continue;
+                                urls.add(u);
+                            }
+                        }
+                    }
+                } catch(e) {}
+
+                // 执行预加载
+                urls.forEach(function(url) {
+                    var img = new Image();
                     img.src = url;
                 });
             })();
