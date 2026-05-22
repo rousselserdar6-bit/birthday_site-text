@@ -8,13 +8,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <title>生日快乐 🎂</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <script src="js/css-doodle.min.js" async></script>
     <script type="importmap">
     {"imports":{"ogl":"https://cdn.jsdelivr.net/npm/ogl@1.0.11/src/index.js"}}
     </script>
-    <script src="js/three.min.js"></script>
-    <script src="js/OrbitControls.js"></script>
-    <script src="js/MeshSurfaceSampler.js"></script>
+    <script src="js/three.min.js" defer></script>
+    <script src="js/OrbitControls.js" defer></script>
+    <script src="js/MeshSurfaceSampler.js" defer></script>
 
     <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Dancing+Script:wght@600;700&family=LXGW+WenKai:wght@300;400;700&family=Noto+Serif+SC:wght@300;400;600;900&family=Playfair+Display:ital,wght@0,400;0,600;0,900;1,400;1,700&family=Zhi+Mang+Xing&display=swap" rel="stylesheet">
 
@@ -5445,11 +5448,10 @@
                 loginPage.style.backgroundPosition = 'center center';
                 loginPage.style.backgroundRepeat = 'no-repeat';
             }
-            // 播放背景音乐（贯穿登录和主站）
-            bgMusic = new Audio('背景音乐.flac');
+            // 背景音乐（等待用户交互后再播放，避免浏览器阻止）
+            bgMusic = new Audio('背景音乐.mp3');
             bgMusic.loop = true;
             bgMusic.volume = 0.5;
-            bgMusic.play().catch(e => console.log('背景音乐播放失败:', e));
         })();
 
         // 盐值：每个账户应有独立的盐，这里使用固定盐作为示例
@@ -5601,6 +5603,10 @@
 
         function handleGuestLogin() {
             isLoggedIn = true;
+            // 用户已交互，启动背景音乐
+            if (bgMusic && bgMusic.paused) {
+                bgMusic.play().catch(e => console.log('背景音乐播放失败:', e));
+            }
             document.body.classList.add('guest-mode');
             window.scrollTo(0, 0);
             const splash = document.getElementById('splash-screen');
@@ -5663,6 +5669,10 @@
 
         function unlockWebsite() {
             if (!isLoggedIn) return;
+            // 用户已交互，启动背景音乐
+            if (bgMusic && bgMusic.paused) {
+                bgMusic.play().catch(e => console.log('背景音乐播放失败:', e));
+            }
             window.scrollTo(0, 0);
             const splash = document.getElementById('splash-screen');
             splash.style.opacity = '0'; 

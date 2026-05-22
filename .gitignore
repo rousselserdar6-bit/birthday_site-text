@@ -12,3 +12,6 @@ Desktop.ini
 
 # Node
 node_modules/
+
+# Audio - keep FLAC local only, use MP3 for distribution
+*.flac
