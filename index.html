@@ -5858,6 +5858,24 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // ==================== 卡片背景图预加载 ====================
+            // 因为旅行日记卡片初始 opacity:0，部分浏览器会跳过不可见元素的背景图加载，
+            // 导致 reveal 时图片还未就绪出现空白。这里提前触发所有卡片背景图的下载。
+            (function preloadCardBackgrounds() {
+                const cardImgs = document.querySelectorAll('.card-img');
+                const urls = new Set();
+                cardImgs.forEach(el => {
+                    const bg = el.style.backgroundImage;
+                    if (!bg || bg === 'none') return;
+                    const match = bg.match(/url\(["']?([^"')]+)["']?\)/);
+                    if (match && match[1]) urls.add(match[1]);
+                });
+                urls.forEach(url => {
+                    const img = new Image();
+                    img.src = url;
+                });
+            })();
+
             // ==================== 严格依次淡入（Sequential Fade-In）====================
             // 规则：
             // 1. 每个元素淡入时长 0.3s
@@ -5945,6 +5963,7 @@
 
             function initEndingGlobe() {
                 if (endingGlobeWorld) return;
+                if (typeof THREE === 'undefined') return;
                 const container = document.getElementById('final-ending');
                 const canvas = container.querySelector('.webgl');
                 if (!canvas) return;
@@ -6141,17 +6160,30 @@
                 function addBalloon(x,z,color,floatH,speed,phase){const balloon=new THREE.Group();const balMat=new THREE.MeshStandardMaterial({color,roughness:0.25,metalness:0.05});const sphere=new THREE.Mesh(new THREE.SphereGeometry(0.06,16,14),balMat);sphere.position.y=floatH;balloon.add(sphere);const knot=new THREE.Mesh(new THREE.SphereGeometry(0.012,6,4),balMat);knot.position.y=floatH-0.055;balloon.add(knot);const sLen=floatH-0.06;const str=new THREE.Mesh(new THREE.CylinderGeometry(0.002,0.002,sLen,5),new THREE.MeshStandardMaterial({color:0xdddddd,roughness:0.5}));str.position.y=sLen/2;balloon.add(str);balloon.position.set(x,-0.10,z);group.add(balloon);balloons.push({group:balloon,baseY:-0.10,amplitude:0.035+Math.random()*0.025,speed,phase});}
 
                 // Main show
+                // 立方体贴图可能因 CDN 或网络问题加载失败，设超时+错误回退，
+                // 失败时场景仍正常渲染（只是玻璃球少一点反射细节）。
+                const cubeTexPromise = new Promise((resolve) => {
+                    let settled = false;
+                    const done = (envMap) => { if (!settled) { settled = true; resolve(envMap); } };
+                    // 8 秒超时：纹理还没回来就跳过，用纯色继续
+                    const timeout = setTimeout(() => done(null), 8000);
+                    try {
+                        cubeTexLoader.load(
+                            cubeTexUrls(),
+                            (envMap) => { clearTimeout(timeout); done(envMap); },
+                            undefined,
+                            () => { clearTimeout(timeout); done(null); }
+                        );
+                    } catch (e) { clearTimeout(timeout); done(null); }
+                });
+
                 Promise.all([
-                    new Promise((resolve) => {
-                        cubeTexLoader.load(cubeTexUrls(), (envMap) => {
-                            globe = new THREE.Mesh(globeGeo, globeMat);
-                            globe.scale.setScalar(0.68);
-                            resolve(envMap);
-                        });
-                    }),
+                    cubeTexPromise,
                     buildCake_inline()
                 ]).then(([envMap, cakeModel]) => {
-                    globe.material.envMap = envMap;
+                    globe = new THREE.Mesh(globeGeo, globeMat);
+                    globe.scale.setScalar(0.68);
+                    if (envMap) globe.material.envMap = envMap;
                     model = cakeModel;
                     globe.position.y = -0.25;
                     group.position.y = -0.25;
