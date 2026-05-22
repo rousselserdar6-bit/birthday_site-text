@@ -7132,14 +7132,14 @@
         checkAllDone();
     });
 
-    // ultimate fallback: 60 second timeout
+    // ultimate fallback: 10 minute timeout
     setTimeout(function() {
         if (!loaderDone) {
             loadedResources = totalResources;
             updateProgress();
             finishLoader();
         }
-    }, 60000);
+    }, 600000);
 })();
 </script>
 
