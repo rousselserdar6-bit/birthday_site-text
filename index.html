@@ -3723,8 +3723,8 @@
                     this.bgMusicPausedByCat = true;
                 }
 
-                // 停止当前播放的音频
-                this.stopCurrent();
+                // 停止当前播放的音频（传入新类型，避免猫切猫时误恢复背景音乐）
+                this.stopCurrent(type);
 
                 // 播放新音频
                 this.currentAudio = audio;
@@ -3735,8 +3735,8 @@
                 }
             },
 
-            // 停止当前音频
-            stopCurrent() {
+            // 停止当前音频（newType: 即将播放的新音频类型）
+            stopCurrent(newType) {
                 var wasCat = this.currentAudioType === 'cat';
                 if (this.currentAudio) {
                     if (this.currentAudio instanceof Audio) {
@@ -3746,8 +3746,8 @@
                     this.currentAudio = null;
                     this.currentAudioType = null;
                 }
-                // 猫音乐停止后恢复背景音乐
-                if (wasCat && this.bgMusicPausedByCat && bgMusic && bgMusic.paused) {
+                // 猫音乐停止后恢复背景音乐——但新音频也是猫的话不恢复
+                if (wasCat && this.bgMusicPausedByCat && bgMusic && bgMusic.paused && newType !== 'cat') {
                     this.bgMusicPausedByCat = false;
                     bgMusic.play().catch(function(){});
                 }
