@@ -3711,25 +3711,33 @@
             currentAudioType: null,
             isGloballyMuted: false,
             audioContext: null,
-            
+            bgMusicPausedByCat: false,   // 标记背景音乐是否被猫音乐暂停
+
             // 播放音频（会自动停止上一个）
             play(audio, type = 'unknown') {
                 if (this.isGloballyMuted) return;
-                
+
+                // 猫音乐开始时暂停背景音乐
+                if (type === 'cat' && bgMusic && !bgMusic.paused) {
+                    bgMusic.pause();
+                    this.bgMusicPausedByCat = true;
+                }
+
                 // 停止当前播放的音频
                 this.stopCurrent();
-                
+
                 // 播放新音频
                 this.currentAudio = audio;
                 this.currentAudioType = type;
-                
+
                 if (audio instanceof Audio) {
                     audio.play().catch(e => console.log('音频播放失败:', e));
                 }
             },
-            
+
             // 停止当前音频
             stopCurrent() {
+                var wasCat = this.currentAudioType === 'cat';
                 if (this.currentAudio) {
                     if (this.currentAudio instanceof Audio) {
                         this.currentAudio.pause();
@@ -3737,6 +3745,11 @@
                     }
                     this.currentAudio = null;
                     this.currentAudioType = null;
+                }
+                // 猫音乐停止后恢复背景音乐
+                if (wasCat && this.bgMusicPausedByCat && bgMusic && bgMusic.paused) {
+                    this.bgMusicPausedByCat = false;
+                    bgMusic.play().catch(function(){});
                 }
             },
             
@@ -3789,11 +3802,8 @@
             console.log('全局音乐:', isMuted ? '已静音' : '已开启');
         }
         
-        // 初始化音频上下文（用户首次交互时调用）
-        function initAudio() {
-            AudioManager.initAudioContext();
-        }
-        
+        // initAudio() 统一定义在老虎机脚本区域，同时初始化 AudioManager 和 slot audioCtx
+
         function openModal(title, desc, imageArray) {
             document.getElementById('modalTitle').innerText = title;
             document.getElementById('modalDesc').innerHTML = desc; 
@@ -5333,12 +5343,17 @@
                 if (currentPlayingHotspot) {
                     currentPlayingHotspot.classList.remove('playing');
                 }
-                const audio = new Audio(`音乐${catNumber}.flac`);
+                const audio = new Audio(`音乐${catNumber}.mp3`);
                 const hotspot = document.querySelector(`.cat-hotspot[data-cat="${catNumber}"]`);
                 audio.addEventListener('ended', function() {
                     hotspot.classList.remove('playing');
                     if (currentPlayingHotspot === hotspot) {
                         currentPlayingHotspot = null;
+                    }
+                    // 猫音乐自然播完后恢复背景音乐
+                    if (AudioManager.bgMusicPausedByCat && bgMusic && bgMusic.paused) {
+                        AudioManager.bgMusicPausedByCat = false;
+                        bgMusic.play().catch(function(){});
                     }
                 });
                 AudioManager.play(audio, 'cat');
@@ -5906,10 +5921,21 @@
                     }
                 } catch(e) {}
 
-                // 执行预加载
+                // 执行图片预加载
                 urls.forEach(function(url) {
                     var img = new Image();
                     img.src = url;
+                });
+
+                // 4. 预加载猫音乐 MP3（点击热点时需要立即播放）
+                var catMusicFiles = [];
+                for (var ci = 1; ci <= 9; ci++) {
+                    catMusicFiles.push('音乐' + ci + '.mp3');
+                }
+                catMusicFiles.forEach(function(f) {
+                    var a = new Audio();
+                    a.preload = 'auto';
+                    a.src = f;
                 });
             })();
 
@@ -6758,6 +6784,9 @@
         let audioCtx;
         
         function initAudio() {
+            // 初始化 AudioManager 的 Web Audio API 上下文
+            AudioManager.initAudioContext();
+            // 初始化老虎机的 Web Audio API 上下文
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -7028,7 +7057,7 @@
                     if (resultData.specialSound === 'dingdingding') {
                         resContainer.innerHTML = `<h2>✨ ？？？ ✨</h2><p>（你被死死盯住了...）</p>`;
                         
-                        const dingAudio = new Audio('音乐8.flac'); 
+                        const dingAudio = new Audio('音乐8.mp3');
                         AudioManager.play(dingAudio, 'jackpot');
                         
                     } else {
