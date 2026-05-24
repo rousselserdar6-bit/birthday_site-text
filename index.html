@@ -2208,6 +2208,11 @@
             position: relative; z-index: 10; overflow: hidden;
             font-family: "STKaiti", "KaiTi", "楷体", "Noto Serif SC", serif;
         }
+        #final-ending .vignette-overlay {
+            position: absolute; inset: 0; z-index: 2;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 55%, rgba(60,20,20,0.2) 85%, rgba(30,10,10,0.45) 100%);
+        }
         /* 动态墨晕 */
         #final-ending .dynamic-bg {
             position: absolute; inset: 0; z-index: 0;
@@ -3003,13 +3008,28 @@
 
         <div class="hint" id="endingGlobeHint">↜ 拖拽水晶球可转动雪花 ↝</div>
 
+        <div class="vignette-overlay"></div>
         <canvas class="webgl"></canvas>
     </section>
 
     <script type="x-shader/x-fragment" id="fragmentShaderSnow">
         uniform float uTime;uniform float uR;uniform float uG;uniform float uB;
         varying vec2 vUv;varying float vRandom;
-        void main(){vec2 uv=vUv;vec3 color=vec3(1.0);vec3 color1=vec3(uR/255.,uG/255.,uB/255.);float random=vRandom;float strength=distance(uv,vec2(0.5));strength*=2.0;strength=1.0-strength;if(strength<0.5)discard;float alpha=step(0.5,fract(((uTime*10.0+10.)*random+(random-.5)*2.0)*0.5));color=alpha==1.0?color:color1;gl_FragColor=vec4(color*strength,1.0);}
+        void main(){
+            vec2 uv=vUv;
+            vec3 baseColor=vec3(uR/255.,uG/255.,uB/255.);
+            float dist=distance(uv,vec2(0.5))*2.0;
+            float glow=1.0-smoothstep(0.0,1.0,dist);
+            glow=pow(glow,1.5);
+            if(glow<0.15)discard;
+            float t=uTime*8.0;
+            float sp1=pow(abs(sin(t*vRandom*2.3+cos(vRandom*43.0)*1.7)),12.0);
+            float sp2=pow(abs(sin(t*vRandom*3.1+cos(vRandom*67.0)*2.1+3.0)),18.0);
+            float sparkle=max(sp1,sp2*0.7);
+            vec3 color=mix(baseColor,vec3(1.0),sparkle*0.9);
+            float alpha=mix(glow,1.0,sparkle);
+            gl_FragColor=vec4(color*alpha,1.0);
+        }
     </script>
     <script type="x-shader/x-vertex" id="vertexShaderSnow">
         #define M_PI 3.1415926535897932384626433832795
@@ -6047,7 +6067,7 @@
                 renderer.physicallyCorrectLights = true;
                 renderer.outputEncoding = THREE.sRGBEncoding;
                 renderer.toneMapping = THREE.CineonToneMapping;
-                renderer.toneMappingExposure = 0.45;
+                renderer.toneMappingExposure = 0.5;
                 renderer.shadowMap.enabled = true;
                 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -6060,9 +6080,9 @@
                 const clock = new THREE.Clock();
                 const lerp = { startY: 0, targetY: 0, ease: 0.05 };
 
-                // Lights
-                scene.add(new THREE.HemisphereLight(0xffeedd, 0xb0c8e8, 0.55));
-                const sunLight = new THREE.DirectionalLight(0xf94343, 10);
+                // Lights — warm magical atmosphere
+                scene.add(new THREE.HemisphereLight(0xffeedd, 0xb0a0c0, 0.45));
+                const sunLight = new THREE.DirectionalLight(0xffd4c0, 12);
                 sunLight.castShadow = true;
                 sunLight.shadow.camera.far = 20;
                 sunLight.shadow.mapSize.set(2048, 2048);
@@ -6070,20 +6090,20 @@
                 sunLight.shadow.bias = -0.0003;
                 sunLight.position.set(5, 7, -6);
                 camera.add(sunLight);
-                const backLight = new THREE.DirectionalLight(0xeeeeff, 2);
+                const backLight = new THREE.DirectionalLight(0xffe8f0, 2.5);
                 backLight.position.set(0, -25, 0);
                 camera.add(backLight);
 
-                // Window lights
+                // Window lights — warm glow
                 [ { pos: [-0.194,0.113,-0.105], ry: -Math.PI/2 }, { pos: [0.228,0.113,-0.105], ry: Math.PI/2 },
                   { pos: [-0.194,0.113,0.073], ry: -Math.PI/2 }, { pos: [0.228,0.113,0.073], ry: Math.PI/2 }
                 ].forEach(({pos,ry}) => {
-                    const l = new THREE.RectAreaLight(0x2ec0ff, 40, 0.055, 0.055);
+                    const l = new THREE.RectAreaLight(0xffc8a0, 45, 0.055, 0.055);
                     l.position.set(...pos); l.rotation.y = ry; group.add(l);
                 });
 
-                const pl1 = new THREE.PointLight(0xe232aa, 15); pl1.position.set(-21,-3,-8.5); pl1.distance = 45; camera.add(pl1);
-                const pl2 = new THREE.PointLight(0x0062ff, 9); pl2.position.set(0,4,0); pl2.distance = 8; camera.add(pl2);
+                const pl1 = new THREE.PointLight(0xff8866, 18); pl1.position.set(-21,-3,-8.5); pl1.distance = 45; camera.add(pl1);
+                const pl2 = new THREE.PointLight(0xffd0c0, 10); pl2.position.set(0,4,0); pl2.distance = 8; camera.add(pl2);
 
                 // Controls
                 const controls = new THREE.OrbitControls(camera, canvas);
@@ -6093,13 +6113,19 @@
                 const cubeTexLoader = new THREE.CubeTextureLoader();
                 const loadCubeTex = () => new Promise(r => cubeTexLoader.load(cubeTexUrls(), r));
 
-                // Glass globe
+                // Glass globe — enhanced with iridescence
                 const globeGeo = new THREE.IcosahedronGeometry(1, 64);
                 const globeMat = new THREE.MeshPhysicalMaterial({
-                    color: "white", roughness: 0.08, metalness: 0.0, opacity: 0.9,
-                    transmission: 1, reflectivity: 0.42, ior: 1.44, thickness: 0.14
+                    color: new THREE.Color(0xffffff),
+                    roughness: 0.05, metalness: 0.0, opacity: 0.92,
+                    transmission: 1, reflectivity: 0.5, ior: 1.5, thickness: 0.18,
+                    attenuationColor: new THREE.Color(0xffe8e0), attenuationDistance: 1.2,
+                    specularIntensity: 1.2, specularColor: new THREE.Color(0xffffff),
+                    iridescence: 0.25, iridescenceIOR: 1.4,
+                    iridescenceThicknessRange: [80, 600],
+                    envMapIntensity: 1.0,
                 });
-                let globe, model, snow, candleLight, balloons = [];
+                let globe, model, snow, candleLight, candleGlow, balloons = [], butterflies = [], windmillBlades, starInst, starsData;
 
                 // Cake builder (abbreviated - same as snowglobe_text.html)
                 function buildCake() { /* full cake code inline */ return buildCake_inline(); }
@@ -6182,7 +6208,19 @@
                         const flame=new THREE.Mesh(new THREE.ConeGeometry(0.022,0.07,14,8),flameMat);flame.position.y=0.605;cake.add(flame);
                         const flameCore=new THREE.Mesh(new THREE.ConeGeometry(0.009,0.038,8,6),flameCoreMat);flameCore.position.y=0.60;cake.add(flameCore);
                         const wick=new THREE.Mesh(new THREE.CylinderGeometry(0.003,0.003,0.025,6),stemBrown);wick.position.y=0.595;cake.add(wick);
-                        const cl=new THREE.PointLight(0xff9944,2.5,1.8);cl.position.set(0,0.62,0);cake.add(cl);candleLight = cl;
+                        const cl=new THREE.PointLight(0xff9944,3.0,2.2);cl.position.set(0,0.62,0);cake.add(cl);candleLight = cl;
+                        const glowCanvas=document.createElement('canvas');glowCanvas.width=glowCanvas.height=128;
+                        const gctx=glowCanvas.getContext('2d');
+                        const grad=gctx.createRadialGradient(64,64,0,64,64,64);
+                        grad.addColorStop(0,'rgba(255,200,100,0.9)');grad.addColorStop(0.15,'rgba(255,150,50,0.7)');
+                        grad.addColorStop(0.4,'rgba(255,100,30,0.3)');grad.addColorStop(0.7,'rgba(255,60,20,0.05)');
+                        grad.addColorStop(1,'rgba(0,0,0,0)');gctx.fillStyle=grad;gctx.fillRect(0,0,128,128);
+                        const glowTex=new THREE.CanvasTexture(glowCanvas);
+                        const gs1=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:true,transparent:true,opacity:0.8}));
+                        gs1.position.set(0,0.62,0);gs1.scale.set(0.55,0.55,1);cake.add(gs1);
+                        const gs2=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:true,transparent:true,opacity:0.35}));
+                        gs2.position.set(0,0.62,0);gs2.scale.set(0.85,0.85,1);cake.add(gs2);
+                        candleGlow=[gs1,gs2];
                         const topSnow=new THREE.Mesh(new THREE.SphereGeometry(0.44,40,20,0,Math.PI*2,0,Math.PI*0.28),new THREE.MeshBasicMaterial({visible:false}));topSnow.name='top';topSnow.position.y=0.36;cake.add(topSnow);
                         resolve(cake);
                     });
@@ -6202,7 +6240,7 @@
                     const mesh = model.children.find(el => el.name === "top");
                     if (!mesh) return;
                     const sampler = new THREE.MeshSurfaceSampler(mesh).build();
-                    const count = 1500;
+                    const count = 1000;
                     const scales=new Float32Array(count),randoms=new Float32Array(count),random1=new Float32Array(count);
                     const r=new Float32Array(count),phis=new Float32Array(count),thetas=new Float32Array(count);
                     const radiusEnd=new Float32Array(count),phiEnd=new Float32Array(count),angleEnd=new Float32Array(count);
@@ -6246,7 +6284,18 @@
                 ]).then(([envMap, cakeModel]) => {
                     globe = new THREE.Mesh(globeGeo, globeMat);
                     globe.scale.setScalar(0.68);
-                    if (envMap) globe.material.envMap = envMap;
+                    if (envMap) {
+                        if (typeof THREE.PMREMGenerator !== 'undefined') {
+                            try {
+                                const pmrem = new THREE.PMREMGenerator(renderer);
+                                if (typeof pmrem.compileCubemapShader === 'function') pmrem.compileCubemapShader();
+                                const refined = pmrem.fromCubemap(envMap).texture;
+                                globe.material.envMap = refined;
+                                scene.environment = refined;
+                                pmrem.dispose();
+                            } catch(e) { globe.material.envMap = envMap; }
+                        } else { globe.material.envMap = envMap; }
+                    }
                     model = cakeModel;
                     globe.position.y = -0.25;
                     group.position.y = -0.25;
@@ -6261,7 +6310,7 @@
                     snowCap.position.y=-0.10;snowCap.rotation.x=-Math.PI/2;snowCap.receiveShadow=true;group.add(snowCap);
 
                     // Tray
-                    const trayMat = new THREE.MeshStandardMaterial({color:0xd4a843,roughness:0.15,metalness:0.85,envMap,envMapIntensity:0.55});
+                    const trayMat = new THREE.MeshStandardMaterial({color:0xd4a843,roughness:0.12,metalness:0.9});
                     const tray = new THREE.Mesh(new THREE.CylinderGeometry(0.58,0.59,0.025,56),trayMat);
                     tray.position.y=-0.07;tray.castShadow=true;tray.receiveShadow=true;group.add(tray);
                     for(let i=0;i<48;i++){const a=(i/48)*Math.PI*2;const b=new THREE.Mesh(new THREE.SphereGeometry(0.02,8,4),trayMat);b.position.set(Math.cos(a)*0.595,-0.055,Math.sin(a)*0.595);group.add(b);}
@@ -6277,6 +6326,8 @@
                     group.add(createGift(-0.55,-0.50,0x8ec8a8,0xffffff,0.12));
                     group.add(createGift(-0.48,-0.58,0xf5e6a3,0xff8060,0.09));
                     addBalloon(-0.52,-0.54,0x5090e0,0.44,1.15,3.5);
+                    addBalloon(0.02,0.48,0xf5a0c0,0.42,1.1,1.8);
+                    addBalloon(0.05,0.62,0xa0d0f0,0.40,1.25,4.0);
                     group.add(createGift(-0.58,0.38,0xc8b8e8,0xf0a0b8,0.13));
 
                     // Confetti
@@ -6285,6 +6336,375 @@
                     const dummy=new THREE.Object3D(),cCol=new THREE.Color();
                     for(let i=0;i<60;i++){const a=i<45?Math.random()*Math.PI*1.5+Math.PI*0.25:Math.random()*Math.PI*0.5+Math.PI*1.25;const r=i<45?0.62+Math.random()*0.22:0.62+Math.random()*0.18;dummy.position.set(Math.cos(a)*r,-0.09+Math.random()*0.015,Math.sin(a)*r);dummy.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,Math.random()*Math.PI);dummy.updateMatrix();confInst.setMatrixAt(i,dummy.matrix);cCol.set(confColors[Math.floor(Math.random()*confColors.length)]);confInst.setColorAt(i,cCol);}
                     confInst.instanceMatrix.needsUpdate=true;group.add(confInst);
+
+                    // ===== Teddy Bear Picnic =====
+                    const picnicGroup = new THREE.Group();
+                    const px = 0, pz = 0; // local coords within picnicGroup
+                    const brMat = new THREE.MeshStandardMaterial({color:0x8B6914, roughness:0.4, metalness:0.0});
+                    const ltMat = new THREE.MeshStandardMaterial({color:0xc49440, roughness:0.35, metalness:0.0});
+                    const dkMat = new THREE.MeshStandardMaterial({color:0x1a0a00, roughness:0.3, metalness:0.0});
+
+                    function addSphere(x, y, z, r, mat, sx, sy, sz) {
+                        const s = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), mat);
+                        s.position.set(x, y, z);
+                        if (sx !== undefined) s.scale.set(sx, sy || sx, sz || sx);
+                        picnicGroup.add(s); return s;
+                    }
+                    // Body + belly
+                    addSphere(px - 0.02, -0.04, pz + 0.02, 0.055, brMat, 1, 0.85, 0.8);
+                    addSphere(px, -0.03, pz + 0.06, 0.035, ltMat, 1, 0.9, 0.5);
+                    // Head + snout + nose
+                    addSphere(px + 0.01, 0.025, pz + 0.02, 0.042, brMat);
+                    addSphere(px + 0.01, 0.018, pz + 0.058, 0.022, ltMat);
+                    addSphere(px + 0.01, 0.022, pz + 0.078, 0.008, dkMat);
+                    // Eyes
+                    addSphere(px + 0.015, 0.042, pz + 0.045, 0.007, dkMat);
+                    addSphere(px - 0.013, 0.042, pz + 0.045, 0.007, dkMat);
+                    // Ears
+                    addSphere(px + 0.035, 0.06, pz + 0.01, 0.02, brMat);
+                    addSphere(px + 0.035, 0.06, pz + 0.02, 0.012, ltMat);
+                    addSphere(px - 0.025, 0.06, pz + 0.01, 0.02, brMat);
+                    addSphere(px - 0.025, 0.06, pz + 0.02, 0.012, ltMat);
+                    // Arms
+                    addSphere(px - 0.06, -0.01, pz, 0.022, brMat, 0.7, 1, 1);
+                    addSphere(px + 0.05, -0.01, pz + 0.06, 0.022, brMat, 0.7, 1, 1);
+                    // Legs
+                    addSphere(px - 0.03, -0.08, pz + 0.06, 0.025, brMat, 0.8, 0.5, 1.2);
+                    addSphere(px + 0.04, -0.08, pz + 0.06, 0.025, brMat, 0.8, 0.5, 1.2);
+
+                    // Picnic blanket
+                    const blanket = new THREE.Mesh(
+                        new THREE.PlaneGeometry(0.18, 0.16),
+                        new THREE.MeshStandardMaterial({color:0xe05040, roughness:0.7, metalness:0.0, side:THREE.DoubleSide})
+                    );
+                    blanket.position.set(px - 0.02, -0.095, pz - 0.02);
+                    blanket.rotation.x = -Math.PI * 0.42;
+                    picnicGroup.add(blanket);
+
+                    // Sandwich
+                    const sandMat = new THREE.MeshStandardMaterial({color:0xf0d890, roughness:0.5, metalness:0.0});
+                    const sand = new THREE.Group();
+                    [{y:0.012},{y:-0.006}].forEach(p => {
+                        const b = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.012, 0.03), sandMat);
+                        b.position.y = p.y; sand.add(b);
+                    });
+                    const letMat = new THREE.MeshStandardMaterial({color:0x80c850, roughness:0.3, metalness:0.0});
+                    const tomMat = new THREE.MeshStandardMaterial({color:0xe84040, roughness:0.2, metalness:0.0});
+                    sand.add(new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.006, 0.028), letMat));
+                    sand.children[sand.children.length-1].position.y = 0.004;
+                    sand.add(new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.006, 0.025), tomMat));
+                    sand.position.set(px - 0.06, -0.08, pz - 0.02);
+                    sand.rotation.set(0.1, 0.3, 0);
+                    picnicGroup.add(sand);
+
+                    // Apple
+                    addSphere(px + 0.02, -0.08, pz - 0.05, 0.016, new THREE.MeshStandardMaterial({color:0xe83030, roughness:0.2, metalness:0.0}));
+                    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, 0.015, 6), new THREE.MeshStandardMaterial({color:0x4a3010, roughness:0.5}));
+                    stem.position.set(px + 0.02, -0.065, pz - 0.05);
+                    picnicGroup.add(stem);
+
+                    // Cookie
+                    const ckMat = new THREE.MeshStandardMaterial({color:0xe8c878, roughness:0.4, metalness:0.0});
+                    const ck = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.006, 12), ckMat);
+                    ck.position.set(px + 0.06, -0.086, pz - 0.04);
+                    picnicGroup.add(ck);
+
+                    // Position: left of macarons, on snow, clear of cake
+                    picnicGroup.position.set(0.10, 0.03, 0.56);
+                    picnicGroup.scale.setScalar(1.3);
+                    group.add(picnicGroup);
+
+                    // ===== Macarons (2 stacked) =====
+                    function makeMacaron(cookieColor, fillingColor, scale) {
+                        const m = new THREE.Group();
+                        const cookieGeo = new THREE.CylinderGeometry(0.08, 0.085, 0.028, 24);
+                        const cookieMat = new THREE.MeshStandardMaterial({color:cookieColor, roughness:0.35, metalness:0.0});
+                        const topCookie = new THREE.Mesh(cookieGeo, cookieMat);
+                        topCookie.position.y = 0.022; m.add(topCookie);
+                        const botCookie = new THREE.Mesh(cookieGeo, cookieMat);
+                        botCookie.position.y = -0.022; m.add(botCookie);
+                        const fillGeo = new THREE.CylinderGeometry(0.076, 0.076, 0.014, 24);
+                        const fillMat = new THREE.MeshStandardMaterial({color:fillingColor, roughness:0.2, metalness:0.0});
+                        const filling = new THREE.Mesh(fillGeo, fillMat);
+                        m.add(filling);
+                        m.scale.setScalar(scale);
+                        return m;
+                    }
+                    const macaron1 = makeMacaron(0xf8c8d8, 0xffe0e8, 1.0);
+                    macaron1.position.set(0.38, 0.12, 0.32);
+                    macaron1.rotation.set(0.2, 0.3, 0.15);
+                    group.add(macaron1);
+                    const macaron2 = makeMacaron(0xd4e8d0, 0xf0f8e8, 0.85);
+                    macaron2.position.set(0.38, 0.17, 0.32);
+                    macaron2.rotation.set(0.2, 0.3, 0.15);
+                    group.add(macaron2);
+
+                    // ===== Detailed Dutch Windmill =====
+                    const windmill = new THREE.Group();
+                    // --- Body: tapered plank tower ---
+                    const bodyBotR = 0.20, bodyTopR = 0.13, bodyH = 0.48;
+                    const bodyGeo = new THREE.CylinderGeometry(bodyTopR, bodyBotR, bodyH, 24);
+                    const bodyBaseMat = new THREE.MeshStandardMaterial({color:0xb89578, roughness:0.55, metalness:0.0});
+                    const bodyMesh = new THREE.Mesh(bodyGeo, bodyBaseMat);
+                    bodyMesh.position.y = bodyH/2 + 0.02;
+                    bodyMesh.castShadow = true; bodyMesh.receiveShadow = true;
+                    windmill.add(bodyMesh);
+                    // Vertical planks (varying brown shades)
+                    const plankCount = 28;
+                    const plankColors = [0xb89578, 0xc4a080, 0xa88568, 0xccaa88, 0xb09070, 0x9a7a60, 0xc8a888, 0xae9072];
+                    for(let i = 0; i < plankCount; i++) {
+                        const angle = (i / plankCount) * Math.PI * 2;
+                        const midR = (bodyBotR + bodyTopR) / 2 + 0.005;
+                        const plankGeo = new THREE.BoxGeometry(0.012, bodyH * 0.92, 0.008);
+                        const plankColor = plankColors[Math.floor(Math.random() * plankColors.length)];
+                        const plankMat = new THREE.MeshStandardMaterial({color:plankColor, roughness:0.5, metalness:0.0});
+                        const plank = new THREE.Mesh(plankGeo, plankMat);
+                        plank.position.set(
+                            Math.cos(angle) * midR,
+                            bodyH/2 + 0.03,
+                            Math.sin(angle) * midR
+                        );
+                        plank.rotation.y = -angle + Math.PI/2;
+                        plank.castShadow = true;
+                        windmill.add(plank);
+                    }
+                    // --- Base platform ---
+                    const platGeo = new THREE.CylinderGeometry(0.24, 0.25, 0.04, 24);
+                    const platMat = new THREE.MeshStandardMaterial({color:0x6b5040, roughness:0.45, metalness:0.05});
+                    const platform = new THREE.Mesh(platGeo, platMat);
+                    platform.position.y = 0.02; platform.castShadow = true; platform.receiveShadow = true;
+                    windmill.add(platform);
+                    // --- Middle gallery deck ---
+                    const galleryY = bodyH * 0.52 + 0.02;
+                    const deckGeo = new THREE.CylinderGeometry(bodyTopR + 0.07, bodyTopR + 0.08, 0.025, 24);
+                    const deckMat = new THREE.MeshStandardMaterial({color:0x5a3d2e, roughness:0.4, metalness:0.1});
+                    const deck = new THREE.Mesh(deckGeo, deckMat);
+                    deck.position.y = galleryY; deck.castShadow = true;
+                    windmill.add(deck);
+                    // Gallery posts + X-pattern railing
+                    const postCount = 20;
+                    const railR = bodyTopR + 0.065;
+                    const postGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.14, 6);
+                    const postMat = new THREE.MeshStandardMaterial({color:0x4a3020, roughness:0.3, metalness:0.15});
+                    const crossGeo = new THREE.BoxGeometry(0.006, 0.11, 0.005);
+                    const crossMat = new THREE.MeshStandardMaterial({color:0x4a3020, roughness:0.3, metalness:0.15});
+                    for(let i = 0; i < postCount; i++) {
+                        const a1 = (i / postCount) * Math.PI * 2;
+                        const a2 = ((i + 1) / postCount) * Math.PI * 2;
+                        // Post
+                        const post = new THREE.Mesh(postGeo, postMat);
+                        post.position.set(Math.cos(a1) * railR, galleryY + 0.07, Math.sin(a1) * railR);
+                        post.castShadow = true;
+                        windmill.add(post);
+                        // X-cross between posts
+                        const midAngle = (a1 + a2) / 2;
+                        const midR = railR;
+                        const crossGroup = new THREE.Group();
+                        crossGroup.position.set(Math.cos(midAngle) * midR, galleryY + 0.07, Math.sin(midAngle) * midR);
+                        crossGroup.rotation.y = -midAngle + Math.PI/2;
+                        const cross1 = new THREE.Mesh(crossGeo, crossMat);
+                        cross1.rotation.z = Math.PI * 0.22;
+                        crossGroup.add(cross1);
+                        const cross2 = new THREE.Mesh(crossGeo, crossMat);
+                        cross2.rotation.z = -Math.PI * 0.22;
+                        crossGroup.add(cross2);
+                        windmill.add(crossGroup);
+                    }
+                    // Top rail ring
+                    const railGeo = new THREE.TorusGeometry(railR, 0.006, 8, 24);
+                    const rail = new THREE.Mesh(railGeo, postMat);
+                    rail.position.y = galleryY + 0.14;
+                    rail.rotation.x = Math.PI/2;
+                    windmill.add(rail);
+                    // Bottom rail ring
+                    const railBot = new THREE.Mesh(railGeo, postMat);
+                    railBot.position.y = galleryY + 0.005;
+                    railBot.rotation.x = Math.PI/2;
+                    windmill.add(railBot);
+
+                    // --- Roof: polygonal pointed cone ---
+                    const roofGeo = new THREE.ConeGeometry(bodyTopR + 0.03, 0.22, 10);
+                    const roofMat = new THREE.MeshStandardMaterial({color:0x4a2a18, roughness:0.45, metalness:0.0});
+                    const roof = new THREE.Mesh(roofGeo, roofMat);
+                    roof.position.y = bodyH + 0.04; roof.castShadow = true;
+                    windmill.add(roof);
+                    // Roof tip ornament
+                    const tipGeo = new THREE.SphereGeometry(0.022, 8, 6);
+                    const tip = new THREE.Mesh(tipGeo, new THREE.MeshStandardMaterial({color:0xd4a840, roughness:0.15, metalness:0.6}));
+                    tip.position.y = bodyH + 0.16;
+                    windmill.add(tip);
+
+                    // --- Windows (4 square, dark) ---
+                    const winGeo2 = new THREE.BoxGeometry(0.04, 0.05, 0.008);
+                    const winMat2 = new THREE.MeshStandardMaterial({color:0x1a1010, roughness:0.2, emissive:0x221100, emissiveIntensity:0.4});
+                    const winPositions = [
+                        {y: galleryY + 0.04, angle: 0.5}, {y: galleryY + 0.04, angle: 3.8},
+                        {y: galleryY - 0.1, angle: 1.2}, {y: galleryY - 0.1, angle: 4.5}
+                    ];
+                    winPositions.forEach(({y, angle}) => {
+                        const win2 = new THREE.Mesh(winGeo2, winMat2);
+                        win2.position.set(Math.cos(angle) * (bodyTopR + 0.04), y, Math.sin(angle) * (bodyTopR + 0.04));
+                        win2.rotation.y = -angle + Math.PI/2;
+                        windmill.add(win2);
+                    });
+
+                    // --- Door ---
+                    const doorGeo2 = new THREE.BoxGeometry(0.06, 0.12, 0.01);
+                    const doorMat2 = new THREE.MeshStandardMaterial({color:0x3a2010, roughness:0.3, metalness:0.1});
+                    const door2 = new THREE.Mesh(doorGeo2, doorMat2);
+                    door2.position.set(0, 0.06, bodyBotR + 0.002);
+                    windmill.add(door2);
+
+                    // --- Blades: 4 large rectangular sail frames ---
+                    const bladesGroup = new THREE.Group();
+                    bladesGroup.position.set(0, bodyH - 0.06, bodyTopR + 0.04);
+                    const sailLen = 0.40, sailW = 0.12;
+                    const axleGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.06, 8);
+                    const axleMat = new THREE.MeshStandardMaterial({color:0x3a2010, roughness:0.3, metalness:0.15});
+                    const axle = new THREE.Mesh(axleGeo, axleMat);
+                    axle.rotation.x = Math.PI/2;
+                    bladesGroup.add(axle);
+                    const sailFrameMat = new THREE.MeshStandardMaterial({color:0x3a2515, roughness:0.35, metalness:0.1});
+                    const sailClothMat = new THREE.MeshStandardMaterial({color:0xe8e0d5, roughness:0.3, metalness:0.05});
+                    for(let b = 0; b < 4; b++) {
+                        const angle = (b / 4) * Math.PI * 2;
+                        const sailGroup = new THREE.Group();
+                        sailGroup.rotation.z = angle;
+                        // Main yard arm
+                        const yardGeo = new THREE.BoxGeometry(0.012, sailLen, 0.012);
+                        const yard = new THREE.Mesh(yardGeo, sailFrameMat);
+                        sailGroup.add(yard);
+                        // Sail cloth panel
+                        const clothGeo = new THREE.PlaneGeometry(sailW, sailLen * 0.78);
+                        const cloth = new THREE.Mesh(clothGeo, sailClothMat);
+                        cloth.position.y = 0.02; cloth.position.z = 0.004;
+                        sailGroup.add(cloth);
+                        // Grid lattice on sail (horizontal bars)
+                        const gridCount = 6;
+                        for(let g = 0; g < gridCount; g++) {
+                            const gy = -sailLen * 0.35 + g * (sailLen * 0.7 / (gridCount - 1));
+                            const barGeo = new THREE.BoxGeometry(sailW * 0.85, 0.005, 0.005);
+                            const bar = new THREE.Mesh(barGeo, sailFrameMat);
+                            bar.position.y = gy; bar.position.z = 0.006;
+                            sailGroup.add(bar);
+                        }
+                        // Vertical grid bars
+                        for(let g = 0; g < 4; g++) {
+                            const gx = -sailW * 0.35 + g * (sailW * 0.7 / 3);
+                            const vbarGeo = new THREE.BoxGeometry(0.005, sailLen * 0.68, 0.005);
+                            const vbar = new THREE.Mesh(vbarGeo, sailFrameMat);
+                            vbar.position.set(gx, 0.02, 0.006);
+                            sailGroup.add(vbar);
+                        }
+                        bladesGroup.add(sailGroup);
+                    }
+                    windmill.add(bladesGroup);
+                    windmillBlades = bladesGroup;
+
+                    // Position: between balloon clusters, blades face viewer when centered
+                    windmill.position.set(0.28, -0.10, -0.52);
+                    windmill.rotation.y = 2.36;
+                    windmill.scale.setScalar(0.7);
+                    group.add(windmill);
+
+                    // ===== Butterflies (3 flying) =====
+                    function makeButterfly(wingColor) {
+                        const bf = new THREE.Group();
+                        // Left wing
+                        const lwGeo = new THREE.CircleGeometry(0.04, 8, 0, Math.PI);
+                        const wingMat = new THREE.MeshStandardMaterial({color:wingColor, roughness:0.2, metalness:0.1, side:THREE.DoubleSide, emissive:wingColor, emissiveIntensity:0.2});
+                        const lw = new THREE.Mesh(lwGeo, wingMat);
+                        lw.position.set(-0.015, 0, 0); lw.rotation.y = -0.5; lw.name = 'lw';
+                        bf.add(lw);
+                        // Right wing
+                        const rw = new THREE.Mesh(lwGeo.clone(), wingMat);
+                        rw.position.set(0.015, 0, 0); rw.rotation.y = 0.5; rw.name = 'rw';
+                        bf.add(rw);
+                        // Body
+                        const bodyGeo = new THREE.CylinderGeometry(0.006, 0.008, 0.04, 6);
+                        const bodyMat = new THREE.MeshStandardMaterial({color:0x3a2020, roughness:0.3, metalness:0.1});
+                        const body = new THREE.Mesh(bodyGeo, bodyMat);
+                        body.rotation.x = Math.PI/2; bf.add(body);
+                        return bf;
+                    }
+                    const bfColors = [0xf080a0, 0x80c0e0, 0xf0d080, 0xd0a0f0, 0x80e0c0];
+                    const bfPaths = [
+                        {center:new THREE.Vector3(0.2,0.3,0.35), radius:0.15, speed:0.6, phase:0, vertSpeed:0.5, vertAmp:0.08},
+                        {center:new THREE.Vector3(-0.3,0.15,-0.2), radius:0.2, speed:0.45, phase:2.1, vertSpeed:0.7, vertAmp:0.06},
+                        {center:new THREE.Vector3(0.05,0.4,-0.3), radius:0.18, speed:0.55, phase:4.3, vertSpeed:0.4, vertAmp:0.1},
+                        {center:new THREE.Vector3(0.1,0.25,0.5), radius:0.14, speed:0.5, phase:1.5, vertSpeed:0.6, vertAmp:0.07},
+                        {center:new THREE.Vector3(0.0,0.2,0.6), radius:0.16, speed:0.4, phase:3.0, vertSpeed:0.5, vertAmp:0.09},
+                    ];
+                    bfColors.forEach((c, i) => {
+                        const bf = makeButterfly(c);
+                        bf.position.copy(bfPaths[i].center);
+                        bf.userData = bfPaths[i];
+                        group.add(bf);
+                        butterflies.push(bf);
+                    });
+
+                    // ===== Small flowers on snow =====
+                    const flowerPetals = new THREE.CylinderGeometry(0.008, 0.002, 0.003, 5);
+                    const flowerCenterGeo = new THREE.SphereGeometry(0.006, 4, 3);
+                    const flowerColors = [0xffb8c8, 0xffe8a0, 0xffc0d0, 0xffffff, 0xa0d0ff, 0xffd0e0];
+                    for(let i = 0; i < 42; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const radius = 0.45 + Math.random() * 0.35;
+                        const fx = Math.cos(angle) * radius;
+                        const fz = Math.sin(angle) * radius;
+                        const fy = -0.09;
+                        const flower = new THREE.Group();
+                        const petalColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+                        const petalMat = new THREE.MeshStandardMaterial({color:petalColor, roughness:0.3, metalness:0.0});
+                        for(let p = 0; p < 5; p++) {
+                            const petal = new THREE.Mesh(flowerPetals, petalMat);
+                            petal.rotation.z = Math.PI * 0.4;
+                            petal.rotation.y = (p / 5) * Math.PI * 2;
+                            petal.position.y = 0.006;
+                            flower.add(petal);
+                        }
+                        const centerDot = new THREE.Mesh(flowerCenterGeo, new THREE.MeshStandardMaterial({color:0xffe880, roughness:0.2, emissive:0x332200, emissiveIntensity:0.3}));
+                        centerDot.position.y = 0.01;
+                        flower.add(centerDot);
+                        flower.position.set(fx, fy, fz);
+                        flower.rotation.x = -Math.PI * 0.3;
+                        const up = new THREE.Vector3(fx, 0, fz).normalize();
+                        flower.rotation.z = Math.atan2(up.x, up.z);
+                        flower.scale.setScalar(0.7 + Math.random() * 1.0);
+                        group.add(flower);
+                    }
+
+                    // ===== Twinkling stars =====
+                    const starGeo = new THREE.OctahedronGeometry(0.022, 0);
+                    const starInstMat = new THREE.MeshStandardMaterial({
+                        color:0xffffff, roughness:0.15, metalness:0.05,
+                        emissive:0xffeedd, emissiveIntensity:0.7
+                    });
+                    starInst = new THREE.InstancedMesh(starGeo, starInstMat, 30);
+                    starsData = [];
+                    for(let i = 0; i < 30; i++) {
+                        const phi = Math.random() * Math.PI * 0.6 + 0.2;
+                        const theta = Math.random() * Math.PI * 2;
+                        const radius = 0.32 + Math.random() * 0.42;
+                        dummy.position.set(
+                            Math.sin(phi) * Math.cos(theta) * radius,
+                            -0.15 + Math.sin(phi) * Math.sin(theta) * radius + Math.random() * 0.45,
+                            Math.cos(phi) * radius
+                        );
+                        dummy.scale.setScalar(0.4 + Math.random() * 1.0);
+                        dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+                        dummy.updateMatrix();
+                        starInst.setMatrixAt(i, dummy.matrix);
+                        starsData.push({
+                            baseY: dummy.position.y,
+                            phase: Math.random() * Math.PI * 2,
+                            speed: 0.3 + Math.random() * 0.7,
+                            amplitude: 0.02 + Math.random() * 0.05,
+                            baseScale: 0.4 + Math.random() * 1.0
+                        });
+                    }
+                    starInst.instanceMatrix.needsUpdate = true;
+                    group.add(starInst);
 
                     const snowData = addSnow();
                     const snowUniforms = snowData.uniforms;
@@ -6312,7 +6732,9 @@
                     requestAnimationFrame(loop);
                     const elapsed = clock.getElapsedTime();
                     lerp.startY = lerp.ease * lerp.targetY + (1-lerp.ease)*lerp.startY;
-                    if (model) group.rotation.y = lerp.startY;
+                    const autoRotate = Math.sin(elapsed * 0.25) * 0.08;
+                    const gentleBob = Math.sin(elapsed * 0.4) * 0.025;
+                    if (model) { const ry = lerp.startY + autoRotate; group.rotation.y = ry; group.position.y = -0.25 + gentleBob; if (globe) globe.rotation.y = ry; }
                     if (snow) {
                         snow.material.uniforms.uTime.value = elapsed;
                         if ((Math.abs(camPX-camera.position.x)>0.1||Math.abs(camPY-camera.position.y)>0.1)&&elapsed-snow.material.uniforms.actionTime.value>3){
@@ -6321,8 +6743,41 @@
                         }
                         camPX=camera.position.x;camPY=camera.position.y;
                     }
-                    if (candleLight) { const t=elapsed*0.001; candleLight.intensity=2.5*Math.max(0.4,1.0+Math.sin(t*8.3)*0.18+Math.sin(t*14.7+1.2)*0.14+Math.sin(t*21.1+2.8)*0.10+Math.sin(t*33.5+4.1)*0.07); }
+                    if (candleLight) { const t=elapsed*0.001; const flicker=Math.max(0.4,1.0+Math.sin(t*8.3)*0.18+Math.sin(t*14.7+1.2)*0.14+Math.sin(t*21.1+2.8)*0.10+Math.sin(t*33.5+4.1)*0.07); candleLight.intensity=3.0*flicker; if (candleGlow) { candleGlow[0].material.opacity=0.8*flicker; candleGlow[0].scale.setScalar(0.55*flicker); candleGlow[1].material.opacity=0.35*flicker; } }
                     if (balloons.length) { balloons.forEach(b=>{b.group.position.y=b.baseY+Math.sin(elapsed*b.speed+b.phase)*b.amplitude;}); }
+                    // Animate butterflies
+                    butterflies.forEach(bf => {
+                        const ud = bf.userData;
+                        const t = elapsed * ud.speed + ud.phase;
+                        bf.position.x = ud.center.x + Math.cos(t) * ud.radius;
+                        bf.position.z = ud.center.z + Math.sin(t * 0.8) * ud.radius * 0.7;
+                        bf.position.y = ud.center.y + Math.sin(elapsed * ud.vertSpeed) * ud.vertAmp;
+                        bf.rotation.y = Math.sin(t) * 0.6;
+                        bf.rotation.z = Math.cos(t * 0.7) * 0.3;
+                        // Wing flap
+                        const flap = Math.abs(Math.sin(elapsed * 8 + ud.phase)) * 0.9 + 0.1;
+                        bf.children.forEach(ch => {
+                            if (ch.name === 'lw') ch.rotation.y = -0.5 - flap * 0.8;
+                            if (ch.name === 'rw') ch.rotation.y = 0.5 + flap * 0.8;
+                        });
+                    });
+                    // Rotate windmill blades
+                    if (windmillBlades) windmillBlades.rotation.z += 0.008;
+                    // Animate stars (float + pulse)
+                    if (starInst && starsData && typeof starInst.getMatrixAt === 'function') {
+                        const sDummy = new THREE.Object3D();
+                        for(let i = 0; i < starsData.length; i++) {
+                            const sd = starsData[i];
+                            starInst.getMatrixAt(i, sDummy.matrix);
+                            sDummy.position.setFromMatrixPosition(sDummy.matrix);
+                            sDummy.position.y = sd.baseY + Math.sin(elapsed * sd.speed + sd.phase) * sd.amplitude;
+                            const s = sd.baseScale + Math.sin(elapsed * 2.5 + sd.phase) * 0.25;
+                            sDummy.scale.setScalar(Math.max(0.2, s));
+                            sDummy.updateMatrix();
+                            starInst.setMatrixAt(i, sDummy.matrix);
+                        }
+                        starInst.instanceMatrix.needsUpdate = true;
+                    }
                     renderer.render(scene, camera);
                     controls.update();
                 }
