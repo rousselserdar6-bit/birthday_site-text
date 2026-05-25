@@ -1189,12 +1189,10 @@
         .journal-wrapper {
             display: flex; position: relative; filter: drop-shadow(0 25px 40px rgba(0, 0, 0, 0.2));
             transition: transform 0.3s ease; margin-left: -20px; text-align: left; z-index: 10;
-            perspective: 800px;
         }
         .card-stack {
             width: 440px; height: 650px; border-radius: 12px;
             position: relative; z-index: 2; overflow: hidden; background: #fff;
-            transform-style: preserve-3d;
         }
         .pushpin {
             position: absolute; top: 15px; right: 15px; font-size: 1.8em;
@@ -5382,89 +5380,8 @@
             }
     </script>
 
-    <script>
-        /* =========================================
-           3D Tilted Card — 旅行日记卡片悬停倾斜效果
-           ========================================= */
-        (function() {
-            var rotateAmplitude = 14;
-            var scaleOnHover = 1.03;
-            var lerpFactor = 0.12;
 
-            var wrapperEls = document.querySelectorAll('.journal-wrapper');
-            if (!wrapperEls.length) return;
-
-            var cards = [];
-            wrapperEls.forEach(function(w) {
-                var stack = w.querySelector('.card-stack');
-                if (!stack) return;
-                cards.push({
-                    wrapper: w,
-                    stack: stack,
-                    curRX: 0, curRY: 0, curS: 1,
-                    tgtRX: 0, tgtRY: 0, tgtS: 1,
-                    over: false
-                });
-            });
-            if (!cards.length) return;
-
-            function isModalActive(wrapper) {
-                var m = wrapper.closest('.modal');
-                return m && m.classList.contains('active');
-            }
-
-            function lerp(a, b, t) { return a + (b - a) * t; }
-
-            document.addEventListener('mousemove', function(e) {
-                cards.forEach(function(c) {
-                    if (!isModalActive(c.wrapper)) {
-                        if (c.over) { c.tgtRX = 0; c.tgtRY = 0; c.tgtS = 1; c.over = false; }
-                        return;
-                    }
-                    var r = c.wrapper.getBoundingClientRect();
-                    var ox = e.clientX - r.left - r.width / 2;
-                    var oy = e.clientY - r.top - r.height / 2;
-                    var hw = r.width / 2, hh = r.height / 2;
-                    var over = ox > -hw && ox < hw && oy > -hh && oy < hh;
-
-                    if (over) {
-                        c.over = true;
-                        c.tgtRX = (oy / hh) * -rotateAmplitude;
-                        c.tgtRY = (ox / hw) * rotateAmplitude;
-                        c.tgtS = scaleOnHover;
-                    } else if (c.over) {
-                        c.over = false;
-                        c.tgtRX = 0; c.tgtRY = 0; c.tgtS = 1;
-                    }
-                });
-            });
-
-            (function tick() {
-                cards.forEach(function(c) {
-                    var rx = lerp(c.curRX, c.tgtRX, lerpFactor);
-                    var ry = lerp(c.curRY, c.tgtRY, lerpFactor);
-                    var s = lerp(c.curS, c.tgtS, lerpFactor);
-
-                    if (Math.abs(rx - c.curRX) < 0.001) rx = c.tgtRX;
-                    if (Math.abs(ry - c.curRY) < 0.001) ry = c.tgtRY;
-                    if (Math.abs(s - c.curS) < 0.001) s = c.tgtS;
-
-                    var dirty = rx !== c.curRX || ry !== c.curRY || s !== c.curS;
-                    c.curRX = rx; c.curRY = ry; c.curS = s;
-
-                    if (dirty) {
-                        c.stack.style.transform =
-                            'rotateX(' + rx.toFixed(2) + 'deg) ' +
-                            'rotateY(' + ry.toFixed(2) + 'deg) ' +
-                            'scale3d(' + s.toFixed(3) + ',' + s.toFixed(3) + ',1)';
-                    }
-                });
-                requestAnimationFrame(tick);
-            })();
-        })();
-    </script>
-
-    <script>
+<script>
         let loveClock, clockWrapper, loveMessage, fixHint, digitsContainer;
         let clockActivated = false; 
         let hintTimer = null;
